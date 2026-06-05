@@ -19,9 +19,9 @@ Phase 1 is split into one **foundation epic** (the shared kernel everyone builds
 flowchart TD
   E0[Epic 0 — Foundation / Shared Kernel]:::k
   E1[Epic 1 — Household & Membership]:::a
-  E2[Epic 2 — Accounts & Aggregation]:::a
+  E2[Epic 2 — Accounts & Manual Entry]:::a
   E4[Epic 4 — Categories]:::a
-  E3[Epic 3 — Statement Import]:::b
+  E3[Epic 3 — Document Upload & Import]:::b
   E5[Epic 5 — Transactions]:::b
   E6[Epic 6 — Budgets & Sinking Funds]:::b
   E7[Epic 7 — Dashboard & Reports]:::c
@@ -47,8 +47,10 @@ flowchart TD
 |---|---|---|
 | **Wave 1** | Epic 0 | Foundation — everyone depends on it; land first. |
 | **Wave 2** | Epic 1, Epic 2, Epic 4 | Independent feature areas on the kernel. |
-| **Wave 3** | Epic 3, Epic 5, Epic 6 | Build on accounts/categories; stub where needed. |
+| **Wave 3** | Epic 3, Epic 5, Epic 6 | Build on accounts/categories; stub where needed. **Epic 3 (document upload) is the Phase 1 data path** — treat as high priority. |
 | **Wave 4** | Epic 7 | Integrates transactions + budgets; lands last. |
+
+> **Phase 1 scope note:** Phase 1 is a **limited-user test release**. Data enters via **document/statement upload (Epic 3) and manual entry (Epic 2) only**. **Plaid live aggregation is deferred to Phase 2** — its stories are listed under Epic 2 as Phase 2 for forward planning, not Phase 1 work.
 
 ### 1.3 Working agreements (parallel + merge)
 
@@ -111,39 +113,41 @@ flowchart TD
 
 ---
 
-## 4. Epic 2 — Accounts & Aggregation (Plaid)
+## 4. Epic 2 — Accounts & Manual Entry
 
-**Goal:** connect accounts via Plaid and control their visibility. **Depends on:** E0. **Parallel with:** Epics 1, 4.
+**Goal:** account model, manual accounts, and per-account visibility. **Depends on:** E0. **Parallel with:** Epics 1, 4.
+**Phase 1 scope.** Plaid live aggregation is **Phase 2** (stories listed at the end for forward planning).
 
-- **E2.1 — Plaid Link connect & token exchange.** *(PRD: A-1 · Size: L)*
-  - AC: Client launches Plaid Link; backend creates link_token, exchanges public_token, stores encrypted access_token + item_id; **no bank credentials stored**.
-- **E2.2 — Account model & initial sync.** *(PRD: A-1 · Size: M)*
-  - AC: Accounts + balances imported; transactions fetched, enriched, categorized (default mapping), stored.
-- **E2.3 — Ongoing transaction sync & webhooks.** *(PRD: A-6 · Size: M)*
-  - AC: Handle `SYNC_UPDATES_AVAILABLE` (delta sync) and `ITEM_LOGIN_REQUIRED` (reconnect state).
-- **E2.4 — Per-account visibility.** *(PRD: A-4 · Size: M)*
+- **E2.1 — Account model.** *(PRD: A-1, A-2 · Size: M)*
+  - AC: Account entity scoped to household + owner; supports sources `manual` and `import` (Plaid source added in Phase 2); balance, institution, mask fields.
+- **E2.2 — Manual account & transactions.** *(PRD: A-2 · Size: M)*
+  - AC: Add a manual cash/unsupported account; add/edit transactions by hand.
+- **E2.3 — Per-account visibility.** *(PRD: A-3 · Size: M)*
   - AC: Owner sets shared / private / balance-only; only the owner can change; enforced via E0.5; defaults (joint→shared, individual→private).
-- **E2.5 — Joint de-duplication.** *(PRD: A-5 · Size: M)*
-  - AC: Same joint account connected by two members is detected and merged; never double-counted in totals.
-- **E2.6 — Connection health & re-auth.** *(PRD: A-6 · Size: S)*
-  - AC: Broken/expired connections surfaced with reconnect prompt.
-- **E2.7 — Manual account.** *(PRD: A-3 · Size: S)*
-  - AC: Add a manual cash/unsupported account and hand-enter transactions.
+- **E2.4 — De-duplication.** *(PRD: A-4 · Size: M)*
+  - AC: `dedup_hash` (account + date + amount + normalized merchant) skips duplicates across repeat imports; never double-counts.
+
+**Phase 2 (forward planning — not Phase 1 work):**
+
+- **E2.P2a — Plaid Link connect & token exchange.** *(PRD: A-7)* — link_token/public_token exchange; store encrypted access_token; no bank credentials stored.
+- **E2.P2b — Initial + delta sync & webhooks.** *(PRD: A-7)* — fetch/enrich/categorize; handle `SYNC_UPDATES_AVAILABLE`, `ITEM_LOGIN_REQUIRED`.
+- **E2.P2c — Connection health & re-auth UI.** *(PRD: A-7)*
+- **E2.P2d — Joint account de-dup across members.** *(PRD: A-4)* — same joint account linked by two members merged.
 
 ---
 
-## 5. Epic 3 — Statement Import
+## 5. Epic 3 — Document Upload & Import  ·  *Phase 1 primary data path*
 
-**Goal:** import transactions from statement files with no stored credentials. **Depends on:** E2 (account model). **Parallel with:** Epics 5, 6.
+**Goal:** get transactions in via uploaded statement files with no stored credentials — the main way data enters in Phase 1. **Depends on:** E2 (account model). **Parallel with:** Epics 5, 6. **Priority: high.**
 
-- **E3.1 — Upload & parse.** *(PRD: A-2 · Size: M)*
-  - AC: Accept CSV/OFX/QFX to encrypted store; parse rows; report row count.
-- **E3.2 — Account detection & selection.** *(PRD: A-2 · Size: M)*
+- **E3.1 — Upload & parse.** *(PRD: A-1 · Size: M)*
+  - AC: Accept CSV/OFX/QFX to encrypted store; parse rows; report row count. (PDF parsing out of scope.)
+- **E3.2 — Account detection & selection.** *(PRD: A-1 · Size: M)*
   - AC: Detect account from header (mask/institution); pre-select target; allow new manual account; **must pick if unmatched** (no silent assignment).
-- **E3.3 — Column mapping.** *(PRD: A-2 · Size: M)*
+- **E3.3 — Column mapping.** *(PRD: A-1 · Size: M)*
   - AC: Map file columns → Date / Merchant / Amount; remember mapping per source for repeat imports.
-- **E3.4 — Dedup & commit.** *(PRD: A-2 · Size: M)*
-  - AC: Skip duplicates via `dedup_hash` (within account + across Plaid data); commit and report imported/skipped counts.
+- **E3.4 — Enrich, dedup & commit.** *(PRD: A-1 · Size: M)*
+  - AC: Enrich/auto-categorize imported rows; skip duplicates via `dedup_hash`; commit and report imported/skipped counts.
 
 ---
 
@@ -225,4 +229,4 @@ flowchart TD
 
 ## 11. Phase 1 Definition of Done (rollup)
 
-All epics complete and integrated such that the [PRD §7 acceptance checklist] passes: a two-person household can sign up with MFA, invite a partner with a role, connect via Plaid and/or import statements with visibility controls, manage categories/sub-categories, run budgets with sub-categories and a sinking fund, and view an accurate shared dashboard with the household/personal toggle and default charts — securely on the responsive web app.
+All epics complete and integrated such that the [PRD §7 acceptance checklist] passes: a two-person household can sign up with MFA, invite a partner with a role, add accounts by uploading statements and/or manual entry with visibility controls, manage categories/sub-categories, run budgets with sub-categories and a sinking fund, and view an accurate shared dashboard with the household/personal toggle and default charts — securely on the responsive web app.

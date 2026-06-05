@@ -42,8 +42,9 @@ footer{margin-top:56px;text-align:center;color:var(--grey);font-size:12px;border
   <div class="meta">Prepared for Harsh · June 4, 2026 · v0.1 · engineering blueprint for the Phase 1 PRD</div>
 </header>
 
-<p class="lead">This document translates the Phase 1 PRD into a buildable design: system architecture, data model, API surface, the Plaid integration, and — most importantly — how household visibility rules are enforced. It is implementation-leaning but stack-agnostic where the choice doesn't matter yet.</p>
-<p class="toc lead"><b>Contents:</b> <a href="#arch">1. Architecture</a> · <a href="#model">2. Data Model</a> · <a href="#vis">3. Visibility Enforcement</a> · <a href="#plaid">4. Plaid Integration</a> · <a href="#import">5. Statement Import</a> · <a href="#api">6. API Surface</a> · <a href="#sec">7. Security</a> · <a href="#fp">8. Future-Proofing</a> · <a href="#stack">9. Stack Notes</a></p>
+<p class="lead">This document translates the Phase 1 PRD into a buildable design: system architecture, data model, API surface, the data-ingestion approach, and — most importantly — how household visibility rules are enforced. It is implementation-leaning but stack-agnostic where the choice doesn't matter yet.</p>
+<div class="warn note"><b>Phase 1 scope note:</b> Phase 1 is a <b>limited-user test release</b>. Data is entered via <b>document/statement upload and manual entry only</b> — there is no live bank aggregation. <b>Plaid aggregation is deferred to Phase 2</b> (§4 is retained as forward design).</div>
+<p class="toc lead"><b>Contents:</b> <a href="#arch">1. Architecture</a> · <a href="#model">2. Data Model</a> · <a href="#vis">3. Visibility Enforcement</a> · <a href="#import">4. Document Upload &amp; Import (Phase 1)</a> · <a href="#plaid">5. Plaid Integration (Phase 2)</a> · <a href="#api">6. API Surface</a> · <a href="#sec">7. Security</a> · <a href="#fp">8. Future-Proofing</a> · <a href="#host">9. Hosting Strategy</a> · <a href="#stack">10. Stack Notes</a></p>
 
 <!-- 1 ARCH -->
 <h2 id="arch">1. System Architecture</h2>
@@ -122,7 +123,7 @@ erDiagram
     uuid id PK
     uuid household_id FK
     uuid owner_user_id FK
-    enum source "plaid|manual|import"
+    enum source "manual|import (plaid in P2)"
     enum visibility "shared|private|balance_only"
     string institution
     string mask
@@ -170,7 +171,7 @@ erDiagram
   <li><b>ACCOUNT.</b> Scoped to a <code>household_id</code> and an <code>owner_user_id</code>. Visibility is an account attribute; only the owner can change it.</li>
   <li><b>CATEGORY.</b> Self-referential for sub-categories (<code>parent_id</code>); <code>kind</code> distinguishes income vs expense; <code>is_system</code> protects core categories (e.g. Income) from deletion.</li>
   <li><b>SINKING_FUND.</b> Linked to a category; holds the virtual <code>reserve_balance</code>; transactions that pay the bill reference it via <code>sinking_fund_id</code> (the B-6 marking).</li>
-  <li><b>TRANSACTION.dedup_hash.</b> Deterministic hash (account + date + amount + normalized merchant) used to skip duplicates across Plaid sync and imports.</li>
+  <li><b>TRANSACTION.dedup_hash.</b> Deterministic hash (account + date + amount + normalized merchant) used to skip duplicates across imports (and Plaid sync in Phase 2).</li>
 </ul>
 
 <!-- 3 VISIBILITY -->
@@ -188,8 +189,38 @@ erDiagram
 <div class="note"><b>Implementation:</b> a single authorization helper resolves, per request, the set of account IDs and the field-level rules the viewer may access; all repository queries take this scope as a mandatory parameter. Totals are computed from the same scope so a balance-only account contributes its balance without exposing transactions. This avoids per-endpoint ad-hoc checks (a common source of leaks).</div>
 
 <!-- 4 PLAID -->
-<h2 id="plaid">4. Plaid Integration</h2>
-<p>Plaid handles bank authentication; PFM never sees or stores bank credentials. The client uses Plaid Link; the backend exchanges and stores only the access token (encrypted).</p>
+<h2 id="import">4. Document Upload &amp; Import Pipeline <span style="font-size:13px;color:#1F8A4C;">(Phase 1 — primary data path)</span></h2>
+<p>In Phase 1, all data enters via document/statement upload or manual entry. This pipeline is therefore a Phase 1 P0 capability.</p>
+<div class="diagram">
+  <pre class="mermaid">
+flowchart LR
+  U[User uploads statement]:::s --> P[Parse file CSV/OFX/QFX]:::step
+  P --> D{Detect account?}:::dec
+  D -- Matched --> S[Pre-select target account]:::step
+  D -- Unmatched --> C[User picks / creates manual account]:::step
+  S --> M[Map columns: Date/Merchant/Amount]:::step
+  C --> M
+  M --> DD[Dedup via dedup_hash]:::step
+  DD --> CM[Commit · report imported/skipped]:::done
+  classDef s fill:#1F4E79,color:#fff,stroke:#1F4E79;
+  classDef step fill:#eaf1f8,color:#1c2530,stroke:#2E6DA4;
+  classDef dec fill:#fbf1df,color:#1c2530,stroke:#B9770E;
+  classDef done fill:#e6f5ec,color:#14532d,stroke:#1F8A4C;
+  </pre>
+</div>
+<ul>
+  <li><b>Upload</b> CSV/OFX/QFX to the encrypted object store. (PDF statements are a later enhancement — parsing is unreliable; not Phase 1.)</li>
+  <li><b>Detect</b> account from header (masked number/institution); suggest target account; user confirms or creates a manual account.</li>
+  <li><b>Map columns</b> → Date / Merchant / Amount (remembered per source for repeat imports).</li>
+  <li><b>Enrich/categorize</b> imported transactions (clean merchant, default category; learns from corrections).</li>
+  <li><b>Dedup</b> via <code>dedup_hash</code> against the target account.</li>
+  <li><b>Commit</b> transactions; report counts (imported / skipped duplicates).</li>
+</ul>
+<div class="warn note"><b>Rule:</b> if the account can't be matched with confidence, the user must pick before commit — no silent assignment.</div>
+
+<!-- 5 PLAID (Phase 2) -->
+<h2 id="plaid">5. Plaid Integration <span style="font-size:13px;color:#B9770E;">(Phase 2 — forward design)</span></h2>
+<p><i>Deferred to Phase 2. Documented here so Phase 1 data structures (account source, dedup, categories) are built to accommodate it without rework.</i> Plaid handles bank authentication; PFM never sees or stores bank credentials. The client uses Plaid Link; the backend exchanges and stores only the access token (encrypted).</p>
 <div class="diagram">
   <pre class="mermaid">
 sequenceDiagram
@@ -216,19 +247,8 @@ sequenceDiagram
   <li><b>Stored:</b> Plaid <code>access_token</code> (encrypted) + <code>item_id</code> per connection; never bank credentials.</li>
   <li><b>Sync:</b> use Plaid's transactions sync; workers process deltas, enrich, categorize, and dedup.</li>
   <li><b>Webhooks:</b> handle <code>SYNC_UPDATES_AVAILABLE</code> and <code>ITEM_LOGIN_REQUIRED</code> (drives the reconnect/connection-health UI).</li>
-  <li><b>Categorization:</b> map Plaid categories to household categories; learn from user corrections (foundational AI, behind the scenes).</li>
+  <li><b>Categorization:</b> map Plaid categories to household categories; reuse the same enrichment as import.</li>
 </ul>
-
-<!-- 5 IMPORT -->
-<h2 id="import">5. Statement Import Pipeline</h2>
-<ul>
-  <li><b>Upload</b> CSV/OFX/QFX to the encrypted object store.</li>
-  <li><b>Detect</b> account from header (masked number/institution); suggest target account; user confirms or creates a manual account.</li>
-  <li><b>Map columns</b> → Date / Merchant / Amount (remembered per source for repeat imports).</li>
-  <li><b>Dedup</b> via <code>dedup_hash</code> against the target account (and across Plaid-sourced data).</li>
-  <li><b>Commit</b> transactions; report counts (imported / skipped duplicates).</li>
-</ul>
-<div class="warn note"><b>Rule:</b> if the account can't be matched with confidence, the user must pick before commit — no silent assignment.</div>
 
 <!-- 6 API -->
 <h2 id="api">6. API Surface (representative)</h2>
@@ -241,7 +261,7 @@ sequenceDiagram
     <tr><td><span class="method post">POST</span> <code>/households/:id/invites</code></td><td>Invite member with role</td></tr>
     <tr><td><span class="method post">POST</span> <code>/invites/:token/accept</code></td><td>Join household with own login</td></tr>
     <tr><td><span class="method patch">PATCH</span> <code>/memberships/:id</code></td><td>Change role; <span class="method del">DELETE</span> remove member</td></tr>
-    <tr><td><span class="method post">POST</span> <code>/plaid/link-token</code> · <code>/plaid/exchange</code></td><td>Plaid Link flow</td></tr>
+    <tr><td><span class="method post">POST</span> <code>/plaid/link-token</code> · <code>/plaid/exchange</code></td><td>Plaid Link flow <b>(Phase 2)</b></td></tr>
     <tr><td><span class="method get">GET</span> <code>/accounts</code> · <span class="method patch">PATCH</span> <code>/accounts/:id/visibility</code></td><td>List accounts; set visibility (owner only)</td></tr>
     <tr><td><span class="method post">POST</span> <code>/imports</code> · <code>/imports/:id/commit</code></td><td>Upload statement; map &amp; commit</td></tr>
     <tr><td><span class="method get">GET</span> <code>/transactions</code> · <span class="method patch">PATCH</span> <code>/transactions/:id</code></td><td>List (scoped/filtered); recategorize</td></tr>
@@ -270,20 +290,60 @@ sequenceDiagram
   <tbody>
     <tr><td>Multiple households per user</td><td>Membership is already a join entity; accounts scoped to household. Later = relax the one-active-membership rule + add a household switcher. No re-model.</td></tr>
     <tr><td>Tags / rental cash-flow (Phase 2)</td><td>Reserve a <code>tag</code>/labeling dimension on transactions (nullable now); rental report groups by it later.</td></tr>
+    <tr><td>Plaid aggregation (Phase 2)</td><td>Account <code>source</code> enum, <code>dedup_hash</code>, and category mapping already accommodate a Plaid source; adding it = new ingestion adapter, no re-model.</td></tr>
     <tr><td>AI platform (Phase 2)</td><td>The <code>/reports</code> query layer is the same engine AI tools will call; keep it clean and visibility-scoped.</td></tr>
     <tr><td>Net worth / investments</td><td>ACCOUNT model accommodates asset/liability types later via an account <code>type</code> field.</td></tr>
     <tr><td>Self-hosted AI models</td><td>N/A in Phase 1, but keep no provider lock-in once AI is added.</td></tr>
   </tbody>
 </table>
 
-<!-- 9 STACK -->
-<h2 id="stack">9. Stack Notes (recommendations, not mandates)</h2>
+<!-- 9 HOSTING -->
+<h2 id="host">9. Hosting Strategy</h2>
+<p>A deliberate <b>two-stage</b> approach: start cheap on Vercel for the test/beta phase, then migrate to a major cloud before launching with real user financial data at scale. The key is building <b>portability seams</b> now so the migration is infra + config, not an application rewrite.</p>
+
+<h3>9.1 Stage 1 — Vercel-era (Phase 1 test / limited users)</h3>
+<table>
+  <thead><tr><th>Concern</th><th>Choice</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td>Frontend + API</td><td>Vercel (Next.js)</td><td>Scales to zero, low cost, GitHub-integrated, per-PR preview deploys (great for parallel teams)</td></tr>
+    <tr><td>Database</td><td>Serverless Postgres (Neon / Supabase)</td><td>Standard Postgres, cheap, scales to zero</td></tr>
+    <tr><td>Background jobs</td><td>Inngest / Upstash QStash</td><td>Serverless functions are short-lived; offload import processing &amp; scheduled work</td></tr>
+    <tr><td>File storage</td><td>Cloudflare R2 / Vercel Blob</td><td>S3-compatible (R2) for uploaded statements</td></tr>
+    <tr><td>Email</td><td>Resend / Postmark</td><td>Verification, MFA email codes, notifications</td></tr>
+    <tr><td>Secrets</td><td>Vercel encrypted env vars</td><td>Adequate for test; move to managed KMS in Stage 2</td></tr>
+  </tbody>
+</table>
+
+<h3>9.2 Stage 2 — Cloud (production / scale)</h3>
+<table>
+  <thead><tr><th>Concern</th><th>Target (GCP example; AWS equivalent)</th></tr></thead>
+  <tbody>
+    <tr><td>Frontend</td><td>Cloud Storage + CDN (S3 + CloudFront)</td></tr>
+    <tr><td>API</td><td>Cloud Run (App Runner / ECS Fargate)</td></tr>
+    <tr><td>Database</td><td>Cloud SQL Postgres (RDS/Aurora) — encryption, backups, PITR</td></tr>
+    <tr><td>Jobs &amp; queue</td><td>Cloud Tasks / Pub-Sub + workers (SQS)</td></tr>
+    <tr><td>File storage</td><td>GCS (S3)</td></tr>
+    <tr><td>Secrets / keys</td><td>Managed KMS + Secret Manager</td></tr>
+  </tbody>
+</table>
+
+<h3>9.3 Portability seams (build these in Stage 1)</h3>
+<ul>
+  <li><b>Standard Postgres</b> — migrates to Cloud SQL/RDS untouched (no Vercel/Neon-proprietary features).</li>
+  <li><b>S3-compatible storage</b> (R2) behind a storage interface — swap to S3/GCS via config.</li>
+  <li><b>Job abstraction</b> — background jobs behind a small interface so Inngest/QStash → Cloud Tasks/SQS is a swap, not a rewrite.</li>
+  <li><b>Framework-agnostic, containerizable backend</b> — moving the API to Cloud Run/Fargate is straightforward.</li>
+  <li><b>IaC + GitHub Actions</b> — reproducible environments; same CI/CD across both stages.</li>
+</ul>
+<div class="warn note"><b>When to migrate:</b> before opening to real user financial data at scale — that's when the stronger controls (managed KMS, SOC 2 alignment) and predictable cost at higher usage matter. Treat Vercel as the test/beta environment.</div>
+
+<!-- 10 STACK -->
+<h2 id="stack">10. Stack Notes (recommendations, not mandates)</h2>
 <ul>
   <li><b>Database:</b> PostgreSQL (relational integrity, mature, managed options everywhere).</li>
-  <li><b>Backend:</b> any mainstream typed stack (e.g. Node/TypeScript, Python, Go) — pick by team familiarity; the design is framework-agnostic.</li>
-  <li><b>Client:</b> a modern SPA framework; responsive-first.</li>
-  <li><b>Hosting:</b> managed PaaS + managed Postgres + managed KMS to minimize ops (aligns with the earlier cost-reduction discussion).</li>
-  <li><b>Background work:</b> a job queue + workers for Plaid sync, enrichment, and imports.</li>
+  <li><b>Backend:</b> any mainstream typed stack (e.g. Node/TypeScript, Python, Go) — pick by team familiarity; the design is framework-agnostic. Node/TS pairs naturally with Vercel in Stage 1.</li>
+  <li><b>Client:</b> a modern SPA framework (Next.js fits the Vercel start); responsive-first.</li>
+  <li><b>Background work:</b> a job queue + workers for imports &amp; enrichment now; Plaid sync added in Phase 2.</li>
 </ul>
 
 <div class="good note"><b>Next deliverables from here:</b> a build backlog (epics → stories) and, in parallel, monetization/pricing. The data model and API above are the contract the backlog builds against.</div>

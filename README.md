@@ -31,13 +31,13 @@ Recommended reading order:
 - **Audience:** households/families first (multi-member, shared + private finances).
 - **Wedge:** budgeting & spending on top of account aggregation.
 - **Differentiator:** AI insights (Phase 2+), with a conversational agent (Phase 3).
-- **Connectivity:** **Plaid** aggregator (no stored bank credentials) + manual/CSV import.
+- **Connectivity:** Phase 1 uses **document/statement upload + manual entry** (limited-user test); **Plaid** live aggregation arrives in Phase 2 (no stored bank credentials).
 - **Security:** mandatory MFA (Google Authenticator + email); per-account visibility (shared / private / balance-only).
 - **Platform:** web-first (responsive); native mobile later.
 
 ## Phase 1 scope (MVP)
 
-Household & membership, mandatory MFA, account aggregation + import, per-account visibility, categories & sub-categories, budgets with amortized sinking funds, and a spending dashboard with default charts. See [phase1-spec.md](./docs/phase1-spec.md).
+Limited-user test release. Household & membership, mandatory MFA, **document/statement upload + manual entry** (no live aggregation), per-account visibility, categories & sub-categories, budgets with amortized sinking funds, and a spending dashboard with default charts. Plaid aggregation is Phase 2. See [phase1-spec.md](./docs/phase1-spec.md).
 
 ## Development
 

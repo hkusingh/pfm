@@ -84,8 +84,8 @@ footer{margin-top:56px;text-align:center;color:var(--grey);font-size:12px;border
     <div class="tl-cell"><span class="bar b1 b-soft">Audit log, passkeys</span></div>
 
     <div class="tl-lane-label">Accounts &amp; data</div>
-    <div class="tl-cell"><span class="bar b1">Aggregation, enrichment, CSV import</span></div>
-    <div class="tl-cell"><span class="bar b1 b-soft">Connection health, more institutions</span></div>
+    <div class="tl-cell"><span class="bar b1">Document upload + manual entry</span></div>
+    <div class="tl-cell"><span class="bar b2">Plaid aggregation + enrichment, connection health</span></div>
     <div class="tl-cell"><span class="bar b1 b-soft">Investment holdings</span></div>
 
     <div class="tl-lane-label">Budgeting</div>
@@ -122,23 +122,24 @@ footer{margin-top:56px;text-align:center;color:var(--grey);font-size:12px;border
       <ul>
         <li>Household, invites, configurable co-owner/member roles</li>
         <li>Mandatory MFA (Google Authenticator + email), encryption, privacy controls</li>
-        <li>Account aggregation + enrichment; manual &amp; CSV/OFX import</li>
-        <li>Per-account visibility (shared / private / balance-only); joint de-dup</li>
+        <li><b>Document/statement upload (CSV/OFX/QFX) + manual accounts</b> (no live aggregation)</li>
+        <li>Per-account visibility (shared / private / balance-only); import de-dup</li>
         <li>Categories, sub-categories, monthly budgets, amortized sinking funds</li>
         <li>Spending dashboard + default charts; recategorize &amp; rules</li>
         <li>Responsive web app</li>
       </ul>
+      <p style="font-size:12.5px;color:#5b6675;margin-top:6px;"><i>Phase 1 is a limited-user test release; Plaid aggregation is deferred to Phase 2.</i></p>
     </div>
     <div class="block">
       <div class="aiblock">
         <h4>AI in this phase</h4>
-        Foundational, behind the scenes: <b>smart categorization</b> and <b>recurring/annual detection</b> (feeds sinking funds). No conversational surface yet — this is where the enriched data that powers Phase 2 gets created.
+        Foundational, behind the scenes: <b>smart categorization</b> and <b>recurring/annual detection</b> on imported data (feeds sinking funds). No conversational surface yet — this is where the enriched data that powers Phase 2 gets created.
       </div>
       <h4 style="margin-top:12px;">Dependencies</h4>
-      <ul><li>Aggregator selected (Plaid vs. MX benchmark)</li><li>Backend, data store, auth/MFA in place</li></ul>
+      <ul><li>Backend, data store, auth/MFA in place</li><li>Statement parsing for common bank formats</li></ul>
     </div>
   </div>
-  <div class="exit"><b>Exit criteria:</b> a two-person household can sign up with MFA, connect/import accounts with visibility controls, run a monthly budget with sub-categories and sinking funds, and see accurate shared spending — on the web.</div>
+  <div class="exit"><b>Exit criteria:</b> a two-person household can sign up with MFA, add accounts via upload/manual entry with visibility controls, run a monthly budget with sub-categories and sinking funds, and see accurate shared spending — on the web.</div>
 </div>
 
 <!-- ===== PHASE 2 ===== -->
@@ -149,11 +150,12 @@ footer{margin-top:56px;text-align:center;color:var(--grey);font-size:12px;border
     <div class="block">
       <h4>Core scope</h4>
       <ul>
+        <li><b>Plaid live aggregation</b> + enrichment, sync, connection health (the deferred connectivity)</li>
         <li>Household net worth + trend (assets &amp; liabilities)</li>
         <li>Property tags + rental cash-flow report (income − expenses = net, per property)</li>
         <li>Custom chart builder; interactive report controls</li>
         <li>Notifications (alerts, bills, insights); step-up auth for sensitive actions</li>
-        <li>Connection health, broader institution coverage, budget rollover</li>
+        <li>Budget rollover</li>
       </ul>
     </div>
     <div class="block">
@@ -206,7 +208,8 @@ footer{margin-top:56px;text-align:center;color:var(--grey);font-size:12px;border
 <table>
   <thead><tr><th>Capability</th><th>Depends on</th></tr></thead>
   <tbody>
-    <tr><td>AI insights (Phase 2)</td><td>Enriched transaction data &amp; categorization from Phase 1</td></tr>
+    <tr><td>Plaid aggregation (Phase 2)</td><td>Phase 1 account model, dedup, category mapping built to accept a Plaid source</td></tr>
+    <tr><td>AI insights (Phase 2)</td><td>Enriched transaction data &amp; categorization (richer once Plaid lands)</td></tr>
     <tr><td>AI platform / agent</td><td>Shared query layer (also powers the custom chart builder)</td></tr>
     <tr><td>Conversational agent (Phase 3)</td><td>AI platform + tools from Phase 2; in-app chat surface</td></tr>
     <tr><td>Telegram/WhatsApp</td><td>In-app chat + secure account-linking + redaction policy</td></tr>
@@ -217,7 +220,7 @@ footer{margin-top:56px;text-align:center;color:var(--grey);font-size:12px;border
 
 <h2>4. Key Assumptions &amp; Risks</h2>
 <ul>
-  <li><b>Aggregator choice</b> (Plaid vs. MX) confirmed before Phase 1 build; enrichment quality affects AI accuracy.</li>
+  <li><b>Plaid deferred to Phase 2</b> (confirmed). Phase 1 is a limited-user test via document upload + manual entry; build data structures to accept a Plaid source later.</li>
   <li><b>AI data privacy</b> rests on a no-retention provider agreement; revisit before scaling.</li>
   <li><b>Cost management</b>: route cheap tasks to small models; AI usage and aggregator fees scale with users.</li>
   <li><b>Scope discipline</b>: conversational AI and external channels are deliberately Phase 3 — resist pulling them earlier before the data and platform are solid.</li>

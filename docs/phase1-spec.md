@@ -12,14 +12,16 @@
 ### 1.1 Purpose
 This document specifies the Phase 1 (MVP) scope of the Personal Finance Manager: a household-first web application that gives families a single, trustworthy, shared view of their money and an accurate budgeting experience.
 
+> **Phase 1 is a limited-user test release.** Data enters via **document/statement upload and manual entry only** — there is no live bank aggregation. **Plaid aggregation is deferred to Phase 2.**
+
 ### 1.2 Phase 1 goal
-A two-person household can sign up securely, connect or import their accounts with privacy controls, run a monthly budget (with sub-categories and amortized annual expenses), and see accurate shared spending — on the web.
+A two-person household can sign up securely, add accounts by uploading statements or entering them manually (with privacy controls), run a monthly budget (with sub-categories and amortized annual expenses), and see accurate shared spending — on the web.
 
 ### 1.3 In scope
-Household & membership, mandatory MFA, account aggregation + manual/CSV import, per-account visibility, categories & sub-categories, monthly budgets, amortized (sinking fund) budgets, spending dashboard & default charts, transaction management, responsive web app.
+Household & membership, mandatory MFA, **document/statement upload (CSV/OFX/QFX) + manual accounts**, per-account visibility, categories & sub-categories, monthly budgets, amortized (sinking fund) budgets, spending dashboard & default charts, transaction management, responsive web app.
 
 ### 1.4 Out of scope (later phases)
-AI insights & conversational agent, net worth/investments, goals & planning, custom chart builder, native mobile apps, external chat channels (Telegram/WhatsApp), passkeys, real-account mapping for sinking funds. Foundational AI categorization runs behind the scenes but has no user-facing surface in Phase 1.
+**Live bank aggregation (Plaid) — Phase 2.** Also: AI insights & conversational agent, net worth/investments, goals & planning, custom chart builder, native mobile apps, external chat channels (Telegram/WhatsApp), passkeys, real-account mapping for sinking funds, PDF statement parsing. Foundational AI categorization (on imported data) runs behind the scenes but has no user-facing surface in Phase 1.
 
 ### 1.5 Personas (reference)
 - **Priya** — co-owner / organizer; sets up the household, builds budgets, high engagement.
@@ -99,31 +101,33 @@ Requirements use IDs (e.g. `H-1`). Each feature lists user stories and acceptanc
 - Lost MFA device → recovery via backup method or recovery codes.
 - Failed MFA attempts → rate-limited / temporary lockout.
 
-### 3.3 Accounts: Aggregation, Import & Visibility
+### 3.3 Accounts: Document Upload, Manual Entry & Visibility
+
+> Phase 1 data path is **document upload + manual entry**. Live aggregation (A-7) is **Phase 2**.
 
 **User stories**
-- As a user, I can connect a bank/card automatically for live updates.
-- As a user, I can import a statement file instead.
+- As a user, I can add an account by uploading a statement file.
+- As a user, I can add a manual account and enter transactions by hand.
 - As an account owner, I control who in the household sees each account.
 
 **Requirements & acceptance criteria**
 
-- **A-1 Connect via aggregator (Plaid).** User links an institution through Plaid using their own bank credentials.
-  - AC: PFM never stores the user's bank credentials (Plaid handles auth).
-  - AC: On success, accounts, balances, and transactions are imported and enriched.
-- **A-2 Import statement.** User uploads CSV/OFX/QFX.
-  - AC: Column-mapping step maps file fields to Date / Merchant / Amount.
+- **A-1 Document/statement upload (primary).** User uploads CSV/OFX/QFX. *(P0)*
+  - AC: Column-mapping step maps file fields to Date / Merchant / Amount (remembered per source for repeat imports).
   - AC: File auto-suggests the target account (from detected account number/name); user confirms or picks; can create a new manual account.
+  - AC: If the account can't be matched with confidence, the user must pick before commit (no silent assignment).
   - AC: Each file maps to exactly one account.
-  - AC: Duplicate transactions (overlapping with existing data in that account) are detected and skipped.
-- **A-3 Manual account.** User can add a manual (cash/unsupported) account and add transactions by hand.
-- **A-4 Per-account visibility.** Owner sets each account to **Shared**, **Private**, or **Balance-only**.
+  - AC: Imported transactions are enriched/auto-categorized; user can correct.
+  - AC: Duplicate transactions (overlapping with existing data in that account) are detected and skipped; counts reported (imported / skipped).
+  - AC: Uploaded files are stored encrypted. (PDF statement parsing is out of scope for Phase 1.)
+- **A-2 Manual account & transactions.** User can add a manual (cash/unsupported) account and add/edit transactions by hand. *(P0)*
+- **A-3 Per-account visibility.** Owner sets each account to **Shared**, **Private**, or **Balance-only**.
   - AC: **Shared** — transactions and balance visible to the household.
   - AC: **Private** — invisible to others; excluded from shared totals unless set to balance-only.
   - AC: **Balance-only** — balance counts toward shared household totals; line items hidden.
   - AC: A user can set visibility only on their own accounts.
-- **A-5 Joint de-duplication.** If two members connect the same joint account, the system detects and merges it so it isn't double-counted.
-- **A-6 Connection health.** Broken/expired connections are surfaced with a reconnect prompt.
+- **A-4 De-duplication.** Duplicate transactions across repeated imports (and, in Phase 2, across aggregation) are detected via a dedup hash and merged/skipped so nothing is double-counted.
+- **A-7 Live aggregation via Plaid — _Phase 2_.** User links an institution through Plaid (own bank credentials; PFM never stores them); accounts, balances, and transactions sync automatically, with connection-health/reconnect handling. *Designed-for now; built in Phase 2.*
 
 **Business rules**
 - Visibility defaults: joint/shared-type accounts default to Shared; individual accounts default to Private.
@@ -131,7 +135,7 @@ Requirements use IDs (e.g. `H-1`). Each feature lists user stories and acceptanc
 
 **Edge cases**
 - Statement file unmatched with confidence → user must choose target account before import proceeds (no silent guessing).
-- Aggregator returns duplicate of a manually-imported transaction → de-dup applies across sources.
+- Re-importing an overlapping statement → de-dup skips already-present transactions.
 - Multi-account statement file → prompt to split or import the matching account only.
 
 ### 3.4 Categories & Sub-categories
@@ -222,7 +226,7 @@ Requirements use IDs (e.g. `H-1`). Each feature lists user stories and acceptanc
 - **NFR-2 Security.** Encryption in transit & at rest; mandatory MFA; least-privilege data access; no stored bank credentials.
 - **NFR-3 Privacy/compliance.** Explicit, revocable consent for connections; data export & deletion; align with applicable privacy regulation (e.g. GDPR/CCPA). *Engage qualified counsel/security specialists before handling real financial data.*
 - **NFR-4 Performance.** Dashboard loads within ~2s on a typical connection with a normal account set; transaction sync runs asynchronously.
-- **NFR-5 Reliability.** Graceful handling of aggregator outages and broken connections; clear error/reconnect states.
+- **NFR-5 Reliability.** Graceful handling of malformed import files and processing errors; clear error states. (Aggregator outage/reconnect handling arrives with Plaid in Phase 2.)
 - **NFR-6 Accessibility.** Meet common accessibility standards (keyboard navigation, contrast, labels).
 - **NFR-7 Auditability (foundational).** Record sensitive actions (member changes, visibility changes, exports) for future audit-log surfacing.
 
@@ -240,7 +244,8 @@ Requirements use IDs (e.g. `H-1`). Each feature lists user stories and acceptanc
 | Roles | Configurable co-owner vs. member |
 | Auth | Mandatory MFA (Google Authenticator + email); passkeys later |
 | Annual expenses | Amortized sinking funds; virtual reserves only |
-| Connectivity | **Plaid** aggregator (no stored credentials) + manual/CSV |
+| Connectivity (Phase 1) | Document/statement upload + manual entry; **no live aggregation** |
+| Connectivity (Phase 2) | **Plaid** aggregator (no stored credentials) |
 | Charts | Default dashboards in Phase 1; custom builder Phase 2 |
 | Platform | Web-first; native mobile later |
 
@@ -248,7 +253,7 @@ Requirements use IDs (e.g. `H-1`). Each feature lists user stories and acceptanc
 
 ## 6. Open Items for This Spec
 
-- **Aggregator: Plaid (confirmed).** Build against Plaid for connections; manual/CSV import remains the no-credential fallback.
+- **Plaid deferred to Phase 2 (confirmed).** Phase 1 is a limited-user test using document upload + manual entry; data structures are built to accommodate a Plaid source later without rework.
 - **Spending-over-time default: 6 months (confirmed)**, with a 3M/6M toggle on the Dashboard card.
 - **Household model: one household per user in Phase 1 (confirmed)** — a household may still have multiple members. Design the data model to allow many-to-many later (membership as a join entity, accounts scoped to a household, not directly to a user) so multi-household becomes a switcher UI + relaxed constraint rather than a re-architecture.
 - Monetization (tiers/pricing) — can be finalized in parallel; does not block build.
@@ -260,7 +265,7 @@ Requirements use IDs (e.g. `H-1`). Each feature lists user stories and acceptanc
 Phase 1 is complete when a two-person household can:
 1. Sign up, verify email, and enroll in MFA.
 2. Invite a partner who joins with their own login and an assigned role.
-3. Connect via aggregator and/or import statements, with per-account visibility set.
+3. Add accounts by uploading statements and/or manual entry, with per-account visibility set.
 4. Maintain categories and sub-categories, including safe deletion.
 5. Run monthly budgets with sub-categories and at least one amortized sinking fund.
 6. View an accurate shared spending dashboard with the household/personal toggle and default charts.
