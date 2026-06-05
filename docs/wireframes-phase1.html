@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PFM — Phase 1 Wireframes</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --blue:#1F4E79; --blue2:#2E6DA4; --accent:#2F855A; --ink:#1c2530; --grey:#6b7686;
+  --line:#e4e8ef; --bg:#eef1f6; --card:#ffffff; --soft:#f5f7fa;
+  --p0:#C0392B; --p1:#B9770E; --p2:#1F8A4C;
+  --shadow:0 1px 3px rgba(20,40,80,.08),0 6px 18px rgba(20,40,80,.05);
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:var(--ink);background:var(--bg);}
+.page{max-width:1180px;margin:0 auto;padding:30px 22px 70px;}
+.head{text-align:center;border-bottom:3px solid var(--blue);padding-bottom:18px;margin-bottom:22px;}
+.head h1{margin:0;color:var(--blue);font-size:28px;}
+.head .sub{color:var(--grey);font-size:15px;margin-top:4px;}
+.tabs{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:24px;}
+.tab{border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 14px;border-radius:22px;
+  font-size:13.5px;cursor:pointer;transition:.15s;}
+.tab:hover{border-color:var(--blue2);}
+.tab.active{background:var(--blue);color:#fff;border-color:var(--blue);}
+.screen{display:none;}
+.screen.active{display:block;}
+.scaption{max-width:760px;margin:0 auto 16px;text-align:center;color:var(--grey);font-size:14px;}
+
+/* browser frame */
+.frame{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;max-width:1080px;margin:0 auto;}
+.frame .bar{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#f0f3f7;border-bottom:1px solid var(--line);}
+.frame .bar .dot{width:11px;height:11px;border-radius:50%;}
+.frame .url{flex:1;background:#fff;border:1px solid var(--line);border-radius:7px;padding:5px 12px;font-size:12px;color:var(--grey);margin-left:8px;}
+
+/* app chrome */
+.app{display:flex;min-height:560px;}
+.side{width:210px;background:#142d44;color:#cdd9e6;padding:18px 0;flex-shrink:0;}
+.brand{font-weight:700;color:#fff;font-size:16px;padding:0 20px 16px;display:flex;align-items:center;gap:8px;}
+.brand .logo{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,#2E6DA4,#2F855A);}
+.nav a{display:flex;align-items:center;gap:10px;padding:10px 20px;color:#cdd9e6;font-size:14px;text-decoration:none;border-left:3px solid transparent;}
+.nav a.on{background:rgba(255,255,255,.08);color:#fff;border-left-color:#2F855A;}
+.nav .ic{width:16px;height:16px;border-radius:4px;background:#3a5670;display:inline-block;}
+.nav a.on .ic{background:#2F855A;}
+.hh{margin-top:auto;padding:14px 20px;font-size:12px;color:#8aa0b6;border-top:1px solid rgba(255,255,255,.08);}
+.main{flex:1;background:var(--soft);padding:22px 26px;overflow:auto;}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;}
+.topbar h2{margin:0;font-size:20px;color:var(--ink);}
+.who{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--grey);}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff;}
+.seg button{border:0;background:#fff;padding:6px 14px;font-size:13px;color:var(--grey);cursor:pointer;}
+.seg button.on{background:var(--blue);color:#fff;}
+
+/* cards & widgets */
+.row{display:grid;gap:16px;}
+.r4{grid-template-columns:repeat(4,1fr);}
+.r3{grid-template-columns:repeat(3,1fr);}
+.r2{grid-template-columns:repeat(2,1fr);}
+.r21{grid-template-columns:1.4fr 1fr;}
+@media(max-width:900px){.r4,.r3,.r2,.r21{grid-template-columns:1fr 1fr;}}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:0 1px 2px rgba(20,40,80,.04);}
+.kpi .lbl{font-size:12px;color:var(--grey);text-transform:uppercase;letter-spacing:.4px;}
+.kpi .val{font-size:24px;font-weight:700;margin-top:4px;}
+.kpi .delta{font-size:12px;margin-top:2px;}
+.up{color:var(--p2)} .down{color:var(--p0)}
+.ctitle{font-size:14px;font-weight:600;margin:0 0 10px;display:flex;justify-content:space-between;align-items:center;}
+.ctitle .link{font-size:12px;color:var(--blue2);font-weight:500;cursor:pointer;}
+canvas{max-height:230px;}
+
+.bvar{display:flex;flex-direction:column;gap:12px;}
+.bvrow .top{display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px;}
+.bvrow .top .amt{color:var(--grey);}
+.track{height:9px;border-radius:6px;background:#eceff3;overflow:hidden;}
+.fill{height:100%;border-radius:6px;background:var(--blue2);}
+.fill.warn{background:var(--p1);} .fill.over{background:var(--p0);}
+.sub{font-size:12px;color:var(--grey);margin-left:14px;}
+
+/* proportional + nested budget rows */
+.bgroup{border:1px solid var(--line);border-left-width:4px;border-radius:10px;margin-bottom:12px;overflow:hidden;}
+.bg-parent{padding:11px 14px;background:#fff;}
+.bg-children{background:var(--soft);border-top:1px solid var(--line);padding:8px 14px 10px 26px;display:none;}
+.bgroup.open .bg-children{display:block;}
+.exp{width:18px;height:18px;border:1px solid var(--line);border-radius:5px;background:#fff;color:var(--blue);
+  font-size:14px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;user-select:none;}
+.exp:hover{border-color:var(--blue2);background:var(--soft);}
+.bgroup.open .exp .p{display:none;}
+.exp .m{display:none;} .bgroup.open .exp .m{display:inline;}
+.kcount{font-size:11px;color:var(--grey);font-weight:400;margin-left:6px;}
+.bgroup.open .kcount{display:none;}
+.bg-child{position:relative;padding:6px 0 6px 14px;}
+.bg-child::before{content:"";position:absolute;left:0;top:0;bottom:50%;width:10px;border-left:1.5px solid #cfd6df;border-bottom:1.5px solid #cfd6df;border-bottom-left-radius:5px;}
+.bg-row{display:flex;justify-content:space-between;align-items:baseline;font-size:13.5px;margin-bottom:6px;}
+.bg-child .bg-row{font-size:12.5px;margin-bottom:5px;}
+.bg-name{font-weight:600;display:flex;align-items:center;gap:8px;}
+.bg-child .bg-name{font-weight:500;color:var(--grey);}
+.bg-name .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+.bg-amt{font-variant-numeric:tabular-nums;color:var(--ink);}
+.bg-amt b{font-weight:700;} .bg-amt .of{color:var(--grey);font-weight:400;}
+.mag{width:100%;height:20px;background:#f7f9fc;border:1px solid #eef1f5;border-radius:7px;}
+.bg-child .mag{height:16px;}
+.mag-track{height:100%;background:#cdd5df;border-radius:6px;position:relative;}
+.mag-fill{height:100%;border-radius:6px;background:var(--blue2);}
+.mag-fill.warn{background:var(--p1);} .mag-fill.over{background:var(--p0);}
+.scale-note{font-size:11.5px;color:var(--grey);display:flex;gap:16px;align-items:center;margin:2px 2px 12px;}
+
+table.tx{width:100%;border-collapse:collapse;font-size:13px;}
+table.tx th{text-align:left;color:var(--grey);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line);font-size:12px;text-transform:uppercase;letter-spacing:.3px;}
+table.tx td{padding:9px 10px;border-bottom:1px solid var(--line);}
+.cat{display:inline-flex;align-items:center;gap:6px;background:var(--soft);border:1px solid var(--line);border-radius:16px;padding:3px 10px;font-size:12px;cursor:pointer;}
+.cat .cd{width:8px;height:8px;border-radius:50%;background:var(--blue2);}
+.amtneg{color:var(--ink);font-variant-numeric:tabular-nums;}
+.tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:14px;font-weight:600;}
+.t-shared{background:#e6f0fa;color:var(--blue);}
+.t-private{background:#f2eafc;color:#6b3fa0;}
+.t-balance{background:#eef7ef;color:var(--p2);}
+.btn{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:9px 16px;font-size:13.5px;cursor:pointer;}
+.btn.ghost{background:#fff;color:var(--blue);border:1px solid var(--blue);}
+.btn.sm{padding:6px 12px;font-size:12.5px;}
+.field{margin-bottom:14px;}
+.field label{display:block;font-size:12.5px;color:var(--grey);margin-bottom:5px;}
+.field input,.field select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:#fff;}
+.center-card{max-width:420px;margin:30px auto;}
+.steps{display:flex;gap:6px;justify-content:center;margin:0 0 18px;}
+.steps i{width:26px;height:5px;border-radius:3px;background:#d8dee7;display:inline-block;}
+.steps i.on{background:var(--blue);}
+.qr{width:140px;height:140px;border-radius:10px;margin:6px auto 12px;
+  background:
+   linear-gradient(90deg,#0000 2px,#fff 0) 0 0/16px 16px,
+   linear-gradient(#0000 2px,#fff 0) 0 0/16px 16px,#142d44;
+  border:6px solid #142d44;}
+.muted{color:var(--grey);font-size:13px;}
+.acct{display:flex;justify-content:space-between;align-items:center;padding:12px 4px;border-bottom:1px solid var(--line);}
+.acct:last-child{border-bottom:0;}
+.acct .l{display:flex;align-items:center;gap:12px;}
+.bankico{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#2E6DA4,#1F4E79);}
+.vis-select{font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);}
+.member{display:flex;justify-content:space-between;align-items:center;padding:12px 4px;border-bottom:1px solid var(--line);}
+.note{background:#eef3f9;border-left:4px solid var(--blue2);padding:10px 14px;border-radius:6px;font-size:13px;margin-top:14px;}
+.pill{font-weight:700;font-size:11px;padding:2px 7px;border-radius:6px;color:#fff;}
+.legend-dot{width:10px;height:10px;border-radius:2px;display:inline-block;margin-right:5px;}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="head">
+    <h1>Personal Finance Manager — Phase 1 Wireframes</h1>
+    <div class="sub">Mid-fidelity · household-first · for Harsh · June 4, 2026 · v0.1</div>
+  </div>
+
+  <div class="tabs" id="tabs"></div>
+
+  <!-- ============ 1. SIGN UP / CREATE HOUSEHOLD ============ -->
+  <section class="screen" data-name="1 · Create household">
+    <p class="scaption">Onboarding (UC1). First user signs up and creates the household, becoming owner.</p>
+    <div class="frame">
+      <div class="bar"><span class="dot" style="background:#ec6a5e"></span><span class="dot" style="background:#f4bf4f"></span><span class="dot" style="background:#61c554"></span><span class="url">app.pfm.com/signup</span></div>
+      <div style="background:var(--soft);padding:10px;">
+        <div class="card center-card">
+          <div class="brand" style="color:var(--blue);justify-content:center;padding-bottom:14px;"><span class="logo"></span> PFM</div>
+          <div class="steps"><i class="on"></i><i></i><i></i><i></i></div>
+          <h3 style="text-align:center;margin:0 0 4px;">Create your household</h3>
+          <p class="muted" style="text-align:center;margin-top:0;">One shared view for everyone in your home.</p>
+          <div class="field"><label>Your name</label><input value="Priya Sharma"></div>
+          <div class="field"><label>Email</label><input value="priya@email.com"></div>
+          <div class="field"><label>Password</label><input type="password" value="········"></div>
+          <div class="field"><label>Household name</label><input value="Sharma Family"></div>
+          <button class="btn" style="width:100%;">Continue</button>
+          <p class="muted" style="text-align:center;margin:12px 0 2px;">Next: verify email → set up MFA</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2. MFA SETUP ============ -->
+  <section class="screen" data-name="2 · MFA setup">
+    <p class="scaption">Mandatory MFA (security decision). Google Authenticator (TOTP) or email — required before reaching the app.</p>
+    <div class="frame">
+      <div class="bar"><span class="dot" style="background:#ec6a5e"></span><span class="dot" style="background:#f4bf4f"></span><span class="dot" style="background:#61c554"></span><span class="url">app.pfm.com/setup/mfa</span></div>
+      <div style="background:var(--soft);padding:10px;">
+        <div class="card center-card">
+          <div class="steps"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+          <h3 style="text-align:center;margin:0 0 4px;">Secure your account</h3>
+          <p class="muted" style="text-align:center;margin-top:0;">Two-factor authentication is required for all accounts.</p>
+          <div class="seg" style="display:flex;width:100%;margin:6px 0 16px;">
+            <button class="on" style="flex:1;">Authenticator app</button>
+            <button style="flex:1;">Email code</button>
+          </div>
+          <div class="qr"></div>
+          <p class="muted" style="text-align:center;">Scan with Google Authenticator, then enter the 6-digit code.</p>
+          <div class="field"><label>Verification code</label><input value="• • •   • • •" style="text-align:center;letter-spacing:4px;"></div>
+          <button class="btn" style="width:100%;">Verify &amp; finish</button>
+          <p class="muted" style="text-align:center;margin-top:12px;">Recovery codes will be shown after setup.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 3. DASHBOARD ============ -->
+  <section class="screen" data-name="3 · Dashboard">
+    <p class="scaption">Home dashboard (UC6). Default charts + budget vs. actual. Toggle household vs. personal view.</p>
+    <div class="frame">
+      <div class="bar"><span class="dot" style="background:#ec6a5e"></span><span class="dot" style="background:#f4bf4f"></span><span class="dot" style="background:#61c554"></span><span class="url">app.pfm.com/dashboard</span></div>
+      <div class="app">
+        <aside class="side">
+          <div class="brand"><span class="logo"></span> PFM</div>
+          <nav class="nav">
+            <a class="on"><span class="ic"></span> Dashboard</a>
+            <a><span class="ic"></span> Transactions</a>
+            <a><span class="ic"></span> Budgets</a>
+            <a><span class="ic"></span> Accounts</a>
+            <a><span class="ic"></span> Reports</a>
+            <a><span class="ic"></span> Household</a>
+          </nav>
+          <div class="hh">Sharma Family · 2 members</div>
+        </aside>
+        <div class="main">
+          <div class="topbar">
+            <h2>Good morning, Priya</h2>
+            <div class="who"><div class="seg"><button class="on">Household</button><button>Personal</button></div><div class="avatar">P</div></div>
+          </div>
+          <div class="row r4">
+            <div class="card kpi"><div class="lbl">Net worth</div><div class="val">$342,180</div><div class="delta up">▲ $2,140 this month</div></div>
+            <div class="card kpi"><div class="lbl">Income (Jun)</div><div class="val">$11,400</div><div class="delta up">on track</div></div>
+            <div class="card kpi"><div class="lbl">Spending (Jun)</div><div class="val">$6,820</div><div class="delta down">▲ 8% vs. May</div></div>
+            <div class="card kpi"><div class="lbl">Budget left</div><div class="val">$2,180</div><div class="delta">of $9,000</div></div>
+          </div>
+          <div class="row r21" style="margin-top:16px;">
+            <div class="card"><div class="ctitle">Income vs. expenses <span class="muted" style="font-weight:400;font-size:12px;"><span class="legend-dot" style="background:#2F855A"></span>Income <span class="legend-dot" style="background:#2E6DA4"></span>Expenses</span></div><canvas id="cIE"></canvas></div>
+            <div class="card"><div class="ctitle">Spending by category <span class="link">June</span></div><canvas id="cCat"></canvas></div>
+          </div>
+          <div class="row r2" style="margin-top:16px;">
+            <div class="card">
+              <div class="ctitle">Budget vs. actual <span class="link">View budgets</span></div>
+              <div class="bvar">
+                <div class="bvrow"><div class="top"><span>Housing</span><span class="amt">$2,400 / $2,400</span></div><div class="track"><div class="fill" style="width:100%"></div></div></div>
+                <div class="bvrow"><div class="top"><span>Groceries</span><span class="amt">$640 / $800</span></div><div class="track"><div class="fill" style="width:80%"></div></div></div>
+                <div class="bvrow"><div class="top"><span>Dining out</span><span class="amt">$420 / $400</span></div><div class="track"><div class="fill over" style="width:100%"></div></div></div>
+                <div class="bvrow"><div class="top"><span>Transport</span><span class="amt">$210 / $350</span></div><div class="track"><div class="fill" style="width:60%"></div></div></div>
+                <div class="bvrow"><div class="top"><span>Kids</span><span class="amt">$520 / $600</span></div><div class="track"><div class="fill warn" style="width:87%"></div></div></div>
+              </div>
+            </div>
+            <div class="card"><div class="ctitle" style="flex-wrap:wrap;gap:8px;">Spending over time <span class="seg" style="border-radius:6px;"><button style="padding:4px 10px;font-size:12px;">3M</button><button class="on" style="padding:4px 10px;font-size:12px;">6M</button></span></div><div class="muted" style="font-size:11px;margin:-2px 0 6px;"><span class="legend-dot" style="background:#2E6DA4"></span>spending <span class="legend-dot" style="background:#d99a2b"></span>annual expense (from reserve)</div><canvas id="cTrend"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 4. ACCOUNTS / CONNECT + VISIBILITY ============ -->
+  <section class="screen" data-name="4 · Accounts &amp; visibility">
+    <p class="scaption">Connect account &amp; set visibility (UC3, UC8). Per-account shared / private / balance-only; owner controls only their own accounts.</p>
+    <div class="frame">
+      <div class="bar"><span class="dot" style="background:#ec6a5e"></span><span class="dot" style="background:#f4bf4f"></span><span class="dot" style="background:#61c554"></span><span class="url">app.pfm.com/accounts</span></div>
+      <div class="app">
+        <aside class="side">
+          <div class="brand"><span class="logo"></span> PFM</div>
+          <nav class="nav">
+            <a><span class="ic"></span> Dashboard</a><a><span class="ic"></span> Transactions</a>
+            <a><span class="ic"></span> Budgets</a><a class="on"><span class="ic"></span> Accounts</a>
+            <a><span class="ic"></span> Reports</a><a><span class="ic"></span> Household</a>
+          </nav>
+          <div class="hh">Sharma Family · 2 members</div>
+        </aside>
+        <div class="main">
+          <div class="topbar"><h2>Accounts</h2><div style="display:flex;gap:8px;"><button class="btn ghost">↥ Import statement</button><button class="btn">+ Add account</button></div></div>
+          <div class="card" style="background:#f7faff;border-style:dashed;border-color:#bcd2ea;">
+            <div class="ctitle">Add an account</div>
+            <div class="row r2" style="gap:12px;">
+              <div class="card" style="text-align:center;"><div class="bankico" style="margin:0 auto 8px;"></div><div><b>Connect automatically</b></div><div class="muted" style="margin:4px 0 10px;">Link your bank/card via secure aggregator for live updates.</div><button class="btn sm">Connect</button></div>
+              <div class="card" style="text-align:center;"><div class="bankico" style="margin:0 auto 8px;background:linear-gradient(135deg,#2F855A,#1F4E79)"></div><div><b>Import a statement</b></div><div class="muted" style="margin:4px 0 10px;">Upload CSV / OFX / QFX downloaded from your bank. No login stored.</div><button class="btn ghost sm">Choose file</button></div>
+            </div>
+          </div>
+          <div class="card" style="margin-top:16px;">
+            <div class="ctitle">Import statement — map columns <span class="muted" style="font-weight:400;">amex_june.csv · 42 rows</span></div>
+            <table class="tx">
+              <thead><tr><th>Your file column</th><th>Maps to</th><th>Sample</th></tr></thead>
+              <tbody>
+                <tr><td>Transaction Date</td><td><select class="vis-select"><option>Date ✓</option></select></td><td class="muted">06/03/2026</td></tr>
+                <tr><td>Description</td><td><select class="vis-select"><option>Merchant ✓</option></select></td><td class="muted">BLUE BOTTLE COFFEE</td></tr>
+                <tr><td>Amount</td><td><select class="vis-select"><option>Amount ✓</option></select></td><td class="muted">-6.80</td></tr>
+              </tbody>
+            </table>
+            <div class="field" style="margin-top:12px;"><label>Import into account</label><select><option>Amex Platinum ····1009</option><option>+ New manual account…</option></select></div>
+            <div class="note" style="margin-top:6px;">Duplicate transactions already on file are detected and skipped automatically.</div>
+            <div style="margin-top:12px;display:flex;gap:8px;"><button class="btn sm">Import 42 transactions</button><button class="btn ghost sm">Cancel</button></div>
+          </div>
+          <div class="card" style="margin-top:16px;">
+            <div class="ctitle">Priya&rsquo;s accounts <span class="link">you</span></div>
+            <div class="acct"><div class="l"><span class="bankico"></span><div><div>Chase Checking</div><div class="muted">····4821 · $8,420</div></div></div><div><select class="vis-select"><option>Shared ✓</option><option>Private</option><option>Balance-only</option></select></div></div>
+            <div class="acct"><div class="l"><span class="bankico"></span><div><div>Amex Platinum</div><div class="muted">····1009 · −$1,240</div></div></div><div><select class="vis-select"><option>Shared ✓</option><option>Private</option><option>Balance-only</option></select></div></div>
+            <div class="acct"><div class="l"><span class="bankico"></span><div><div>Personal Savings</div><div class="muted">····7733 · $22,500</div></div></div><div><select class="vis-select"><option>Private ✓</option><option>Shared</option><option>Balance-only</option></select></div></div>
+          </div>
+          <div class="card" style="margin-top:16px;">
+            <div class="ctitle">Shared with you <span class="link">from household</span></div>
+            <div class="acct"><div class="l"><span class="bankico"></span><div><div>Joint Checking <span class="tag t-shared">Shared</span></div><div class="muted">Connected by Arjun · $12,300 · de-duplicated</div></div></div><span class="muted">view only</span></div>
+            <div class="acct"><div class="l"><span class="bankico"></span><div><div>Arjun&rsquo;s Salary <span class="tag t-balance">Balance-only</span></div><div class="muted">Counts toward totals · items hidden</div></div></div><span class="muted">view only</span></div>
+          </div>
+          <div class="note"><b>Visibility:</b> you can only set sharing on your own accounts. <span class="tag t-shared">Shared</span> shows transactions to the household, <span class="tag t-private">Private</span> hides everything, <span class="tag t-balance">Balance-only</span> counts the balance in totals but hides line items.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 5. BUDGETS / SUB-CATEGORIES ============ -->
+  <section class="screen" data-name="5 · Budgets &amp; sub-categories">
+    <p class="scaption">Categories &amp; budgets (UC4, UC5). Sub-categories nest under a parent and roll up.</p>
+    <div class="frame">
+      <div class="bar"><span class="dot" style="background:#ec6a5e"></span><span class="dot" style="background:#f4bf4f"></span><span class="dot" style="background:#61c554"></span><span class="url">app.pfm.com/budgets</span></div>
+      <div class="app">
+        <aside class="side">
+          <div class="brand"><span class="logo"></span> PFM</div>
+          <nav class="nav">
+            <a><span class="ic"></span> Dashboard</a><a><span class="ic"></span> Transactions</a>
+            <a class="on"><span class="ic"></span> Budgets</a><a><span class="ic"></span> Accounts</a>
+            <a><span class="ic"></span> Reports</a><a><span class="ic"></span> Household</a>
+          </nav>
+          <div class="hh">Sharma Family · 2 members</div>
+        </aside>
+        <div class="main">
+          <div class="topbar"><h2>Budgets — June 2026</h2><div style="display:flex;gap:8px;"><button class="btn ghost sm">⚙ Manage categories</button><button class="btn sm">+ Add category</button></div></div>
+          <div class="scale-note" style="flex-wrap:wrap;gap:14px;"><span><b>Bar length</b> = budget size (relative)</span><span><span class="legend-dot" style="background:#2E6DA4"></span>spent</span><span><span class="legend-dot" style="background:#B9770E"></span>near limit</span><span><span class="legend-dot" style="background:#C0392B"></span>over budget</span><span><span class="legend-dot" style="background:#cdd5df"></span>left to spend</span><span><span class="legend-dot" style="background:#f7f9fc;border:1px solid #e4e8ef"></span>smaller than largest budget</span></div>
+          <div class="card" style="padding:14px 16px;">
+
+            <!-- INCOME (expected vs received, not a spend cap) -->
+            <div class="bgroup" style="border-left-color:#2F855A;background:#fbfdfb;">
+              <div class="bg-parent">
+                <div class="bg-row"><span class="bg-name"><span class="exp"><span class="p">+</span><span class="m">−</span></span><span class="dot" style="background:#2F855A"></span> Income <span class="kcount">3 sub · expected</span></span><span class="bg-amt"><b style="color:#1F8A4C;">$5,700</b> <span class="of">received / $11,400 expected</span></span></div>
+                <div class="mag" style="background:#e7f3ea;border-color:#d4e9d9;"><div class="mag-track" style="width:100%;background:#bfe0c8;"><div class="mag-fill" style="width:50%;background:#2F855A;"></div></div></div>
+              </div>
+              <div class="bg-children">
+                <div class="bg-child"><div class="bg-row"><span class="bg-name">Priya&rsquo;s salary</span><span class="bg-amt"><b style="color:#1F8A4C;">$5,700</b> <span class="of">/ $5,700 expected</span></span></div><div class="mag" style="background:#e7f3ea;"><div class="mag-track" style="width:50%;background:#bfe0c8;"><div class="mag-fill" style="width:100%;background:#2F855A;"></div></div></div></div>
+                <div class="bg-child"><div class="bg-row"><span class="bg-name">Arjun&rsquo;s salary <span class="tag t-balance" style="font-size:10px;">balance-only</span></span><span class="bg-amt"><b style="color:var(--grey);">$0</b> <span class="of">/ $5,400 expected</span></span></div><div class="mag" style="background:#e7f3ea;"><div class="mag-track" style="width:47%;background:#bfe0c8;"><div class="mag-fill" style="width:0%;"></div></div></div></div>
+                <div class="bg-child"><div class="bg-row"><span class="bg-name">Investment income</span><span class="bg-amt"><b style="color:var(--grey);">$0</b> <span class="of">/ $300 expected</span></span></div><div class="mag" style="background:#e7f3ea;"><div class="mag-track" style="width:6%;background:#bfe0c8;"><div class="mag-fill" style="width:0%;"></div></div></div></div>
+              </div>
+            </div>
+            <div style="font-size:11.5px;color:var(--grey);margin:0 2px 12px;">↑ Income tracks <b>received vs expected</b> (no spend limit). Categories below track <b>spent vs budget</b>.</div>
+
+            <!-- FOOD -->
+            <div class="bgroup" style="border-left-color:#2F855A;">
+              <div class="bg-parent">
+                <div class="bg-row"><span class="bg-name"><span class="exp"><span class="p">+</span><span class="m">−</span></span><span class="dot" style="background:#2F855A"></span> Food <span class="kcount">2 sub</span></span><span class="bg-amt"><b>$1,060</b> <span class="of">/ $1,200</span></span></div>
+                <div class="mag"><div class="mag-track" style="width:50%"><div class="mag-fill" style="width:88%"></div></div></div>
+              </div>
+              <div class="bg-children">
+                <div class="bg-child"><div class="bg-row"><span class="bg-name">Groceries</span><span class="bg-amt"><b>$640</b> <span class="of">/ $800</span></span></div><div class="mag"><div class="mag-track" style="width:33%"><div class="mag-fill" style="width:80%"></div></div></div></div>
+                <div class="bg-child"><div class="bg-row"><span class="bg-name">Dining out</span><span class="bg-amt"><b>$420</b> <span class="of">/ $400</span> <span class="pill" style="background:var(--p0);font-size:10px;">over</span></span></div><div class="mag"><div class="mag-track" style="width:17%"><div class="mag-fill over" style="width:100%"></div></div></div></div>
+              </div>
+            </div>
+
+            <!-- HOUSING -->
+            <div class="bgroup" style="border-left-color:#2E6DA4;">
+              <div class="bg-parent">
+                <div class="bg-row"><span class="bg-name"><span class="exp"><span class="p">+</span><span class="m">−</span></span><span class="dot" style="background:#2E6DA4"></span> Housing <span class="kcount">2 sub</span></span><span class="bg-amt"><b>$2,400</b> <span class="of">/ $2,400</span></span></div>
+                <div class="mag"><div class="mag-track" style="width:100%"><div class="mag-fill" style="width:100%"></div></div></div>
+              </div>
+              <div class="bg-children">
+                <div class="bg-child"><div class="bg-row"><span class="bg-name">Mortgage</span><span class="bg-amt"><b>$2,100</b> <span class="of">/ $2,100</span></span></div><div class="mag"><div class="mag-track" style="width:87.5%"><div class="mag-fill" style="width:100%"></div></div></div></div>
+                <div class="bg-child"><div class="bg-row"><span class="bg-name">Utilities</span><span class="bg-amt"><b>$300</b> <span class="of">/ $300</span></span></div><div class="mag"><div class="mag-track" style="width:12.5%"><div class="mag-fill" style="width:100%"></div></div></div></div>
+              </div>
+            </div>
+
+            <!-- KIDS -->
+            <div class="bgroup" style="border-left-color:#B9770E;">
+              <div class="bg-parent">
+                <div class="bg-row"><span class="bg-name"><span class="exp"><span class="p">+</span><span class="m">−</span></span><span class="dot" style="background:#B9770E"></span> Kids <span class="kcount">2 sub</span></span><span class="bg-amt"><b>$520</b> <span class="of">/ $600</span></span></div>
+                <div class="mag"><div class="mag-track" style="width:25%"><div class="mag-fill warn" style="width:87%"></div></div></div>
+              </div>
+              <div class="bg-children">
+                <div class="bg-child"><div class="bg-row"><span class="bg-name">Childcare</span><span class="bg-amt"><b>$400</b> <span class="of">/ $450</span></span></div><div class="mag"><div class="mag-track" style="width:18.75%"><div class="mag-fill warn" style="width:89%"></div></div></div></div>
+                <div class="bg-child"><div class="bg-row"><span class="bg-name">Activities <span class="link" style="cursor:pointer;font-weight:400;">+ add sub-category</span></span><span class="bg-amt"><b>$120</b> <span class="of">/ $150</span></span></div><div class="mag"><div class="mag-track" style="width:6.25%"><div class="mag-fill" style="width:80%"></div></div></div></div>
+              </div>
+            </div>
+
+          </div>
+          <div class="topbar" style="margin:18px 0 6px;"><h2 style="font-size:16px;">Annual / amortized expenses <span class="tag t-balance" style="font-weight:600;">sinking funds</span></h2><button class="btn sm">+ Add annual expense</button></div>
+          <div class="card">
+            <table class="tx">
+              <thead><tr><th>Expense</th><th>Annual</th><th>Monthly set-aside</th><th>Reserve saved</th><th>Next due</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>Property tax</td><td>$6,000</td><td>$500/mo</td>
+                  <td style="min-width:150px;"><div class="track" style="margin-bottom:3px;"><div class="fill" style="width:58%"></div></div><span class="muted">$3,500 of $6,000</span></td>
+                  <td>Nov 2026 <span class="muted">· 5 mo</span></td>
+                </tr>
+                <tr>
+                  <td>Home insurance</td><td>$1,800</td><td>$150/mo</td>
+                  <td><div class="track" style="margin-bottom:3px;"><div class="fill warn" style="width:42%"></div></div><span class="muted">$750 of $1,800</span></td>
+                  <td>Sep 2026 <span class="muted">· 3 mo</span></td>
+                </tr>
+                <tr>
+                  <td>Auto insurance <span class="muted">(6-mo)</span></td><td>$2,400</td><td>$200/mo</td>
+                  <td><div class="track" style="margin-bottom:3px;"><div class="fill over" style="width:25%"></div></div><span class="muted" style="color:var(--p0)">$300 of $1,200 · behind</span></td>
+                  <td>Aug 2026 <span class="muted">· 2 mo</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="note"><b>Sub-categories</b> nest under a parent and roll up automatically — the parent total is the sum of its children plus any direct spend.</div>
+          <div class="note" style="border-left-color:var(--p2);background:#eef7ef;"><b>Amortized expenses</b> spread a yearly bill evenly across months into a <b>virtual reserve</b>. The monthly budget shows the set-aside ($500); when the bill is paid it draws from the reserve instead of spiking that month. The yearly report still shows the true $6,000.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 6. TRANSACTIONS / RECATEGORIZE ============ -->
+  <section class="screen" data-name="6 · Transactions">
+    <p class="scaption">Transactions &amp; recategorize (UC7). Fix a category, optionally create a rule for the merchant.</p>
+    <div class="frame">
+      <div class="bar"><span class="dot" style="background:#ec6a5e"></span><span class="dot" style="background:#f4bf4f"></span><span class="dot" style="background:#61c554"></span><span class="url">app.pfm.com/transactions</span></div>
+      <div class="app">
+        <aside class="side">
+          <div class="brand"><span class="logo"></span> PFM</div>
+          <nav class="nav">
+            <a><span class="ic"></span> Dashboard</a><a class="on"><span class="ic"></span> Transactions</a>
+            <a><span class="ic"></span> Budgets</a><a><span class="ic"></span> Accounts</a>
+            <a><span class="ic"></span> Reports</a><a><span class="ic"></span> Household</a>
+          </nav>
+          <div class="hh">Sharma Family · 2 members</div>
+        </aside>
+        <div class="main">
+          <div class="topbar"><h2>Transactions</h2><div class="who"><input style="padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;" placeholder="Search…"></div></div>
+          <div class="card" style="padding:6px 14px;">
+            <table class="tx">
+              <thead><tr><th>Date</th><th>Merchant</th><th>Account</th><th>Category</th><th style="text-align:right">Amount</th></tr></thead>
+              <tbody>
+                <tr><td>Jun 3</td><td>Whole Foods</td><td>Joint Checking</td><td><span class="cat"><span class="cd"></span> Groceries ▾</span></td><td style="text-align:right" class="amtneg">−$128.40</td></tr>
+                <tr style="background:#fbf7ec;"><td>Jun 3</td><td>Blue Bottle Coffee</td><td>Amex</td><td><span class="cat" style="border-color:var(--p1);"><span class="cd" style="background:var(--p1)"></span> Uncategorized ▾</span></td><td style="text-align:right" class="amtneg">−$6.80</td></tr>
+                <tr><td>Jun 2</td><td>County Tax Office <span class="tag t-balance" style="font-size:10px;">annual · from reserve</span></td><td>Joint Checking</td><td><span class="cat"><span class="cd" style="background:#d99a2b"></span> Property tax ▾</span></td><td style="text-align:right" class="amtneg">−$6,000.00</td></tr>
+                <tr><td>Jun 2</td><td>Shell Gas</td><td>Amex</td><td><span class="cat"><span class="cd"></span> Transport ▾</span></td><td style="text-align:right" class="amtneg">−$54.10</td></tr>
+                <tr><td>Jun 2</td><td>Netflix</td><td>Joint Checking</td><td><span class="cat"><span class="cd"></span> Subscriptions ▾</span></td><td style="text-align:right" class="amtneg">−$15.99</td></tr>
+                <tr><td>Jun 1</td><td>Employer Payroll</td><td>Chase Checking</td><td><span class="cat"><span class="cd" style="background:var(--p2)"></span> Income ▾</span></td><td style="text-align:right;color:var(--p2)">+$5,700.00</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card" style="margin-top:14px;max-width:420px;">
+            <div class="ctitle">Recategorize · Blue Bottle Coffee</div>
+            <div class="field"><label>Category</label><select><option>Dining out</option><option>Groceries</option><option>Coffee (new sub-category…)</option></select></div>
+            <label style="font-size:13px;display:flex;gap:8px;align-items:center;color:var(--ink);"><input type="checkbox" checked> Always categorize <b>&nbsp;Blue Bottle&nbsp;</b> as Dining out</label>
+            <div style="margin-top:14px;display:flex;gap:8px;"><button class="btn sm">Save</button><button class="btn ghost sm">Cancel</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 7. HOUSEHOLD / INVITE ============ -->
+  <section class="screen" data-name="7 · Household &amp; invite">
+    <p class="scaption">Members &amp; invite (UC2). Invite to the household and choose a role — configurable co-owner vs. member.</p>
+    <div class="frame">
+      <div class="bar"><span class="dot" style="background:#ec6a5e"></span><span class="dot" style="background:#f4bf4f"></span><span class="dot" style="background:#61c554"></span><span class="url">app.pfm.com/household</span></div>
+      <div class="app">
+        <aside class="side">
+          <div class="brand"><span class="logo"></span> PFM</div>
+          <nav class="nav">
+            <a><span class="ic"></span> Dashboard</a><a><span class="ic"></span> Transactions</a>
+            <a><span class="ic"></span> Budgets</a><a><span class="ic"></span> Accounts</a>
+            <a><span class="ic"></span> Reports</a><a class="on"><span class="ic"></span> Household</a>
+          </nav>
+          <div class="hh">Sharma Family · 2 members</div>
+        </aside>
+        <div class="main">
+          <div class="topbar"><h2>Household — Sharma Family</h2></div>
+          <div class="row r21">
+            <div class="card">
+              <div class="ctitle">Members</div>
+              <div class="member"><div class="l" style="display:flex;gap:10px;align-items:center;"><div class="avatar">P</div><div><div>Priya Sharma <span class="muted">(you)</span></div><div class="muted">priya@email.com · last login: now</div></div></div><span class="tag t-shared">Owner</span></div>
+              <div class="member"><div class="l" style="display:flex;gap:10px;align-items:center;"><div class="avatar" style="background:#2F855A;">A</div><div><div>Arjun Sharma</div><div class="muted">arjun@email.com · last login: Jun 3, 8:14 PM</div></div></div><select class="vis-select"><option>Co-owner ✓</option><option>Member</option></select></div>
+              <div class="member" style="border-bottom:0;"><div class="l" style="display:flex;gap:10px;align-items:center;"><div class="avatar" style="background:#B9770E;">S</div><div><div>Sam Sharma <span class="muted">invited</span></div><div class="muted">pending · sam@email.com · last login: never</div></div></div><select class="vis-select"><option>Member ✓</option><option>Co-owner</option></select></div>
+            </div>
+            <div class="card">
+              <div class="ctitle">Invite someone</div>
+              <div class="field"><label>Email</label><input placeholder="name@email.com"></div>
+              <div class="field"><label>Role</label><select><option>Co-owner — full control</option><option>Member — view + own accounts</option></select></div>
+              <button class="btn" style="width:100%;">Send invite</button>
+              <div class="note" style="margin-top:14px;"><b>Roles:</b> a co-owner can edit shared budgets, invite members, and change settings. A member sees the shared view and manages only their own accounts. Each person keeps their own login + MFA.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 10. REPORTS ============ -->
+  <section class="screen" data-name="10 · Reports">
+    <p class="scaption">Reports — the explorable home for charts &amp; analysis: a default report gallery, interactive controls, and a custom chart builder. Built on a simple charting library (not heavy BI).</p>
+    <div class="frame">
+      <div class="bar"><span class="dot" style="background:#ec6a5e"></span><span class="dot" style="background:#f4bf4f"></span><span class="dot" style="background:#61c554"></span><span class="url">app.pfm.com/reports</span></div>
+      <div class="app">
+        <aside class="side">
+          <div class="brand"><span class="logo"></span> PFM</div>
+          <nav class="nav">
+            <a><span class="ic"></span> Dashboard</a><a><span class="ic"></span> Transactions</a>
+            <a><span class="ic"></span> Budgets</a><a><span class="ic"></span> Accounts</a>
+            <a class="on"><span class="ic"></span> Reports</a><a><span class="ic"></span> Household</a><a><span class="ic"></span> Settings</a>
+          </nav>
+          <div class="hh">Sharma Family · 2 members</div>
+        </aside>
+        <div class="main">
+          <div class="topbar"><h2>Reports</h2><button class="btn sm">+ New chart</button></div>
+
+          <!-- interactive controls -->
+          <div class="card" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 14px;">
+            <span class="muted" style="font-size:12px;">Showing:</span>
+            <select class="vis-select"><option>Last 6 months</option><option>Last 3 months</option><option>This year</option><option>Custom range…</option></select>
+            <div class="seg"><button class="on">Household</button><button>Personal</button></div>
+            <select class="vis-select"><option>All accounts</option><option>Joint Checking</option><option>Amex</option></select>
+            <select class="vis-select"><option>All categories</option><option>Food</option><option>Housing</option></select>
+          </div>
+
+          <!-- featured report -->
+          <div class="card" style="margin-top:16px;">
+            <div class="ctitle">Spending by category over time <span class="seg" style="border-radius:6px;"><button class="on" style="padding:4px 10px;font-size:12px;">Stacked</button><button style="padding:4px 10px;font-size:12px;">Line</button></span></div>
+            <canvas id="rMain" style="max-height:260px;"></canvas>
+          </div>
+
+          <!-- report gallery -->
+          <div class="topbar" style="margin:18px 0 6px;"><h2 style="font-size:16px;">Report library</h2><span class="muted" style="font-size:12px;">click to open · ★ save to dashboard</span></div>
+          <div class="row r3">
+            <div class="card"><div class="ctitle" style="font-size:13px;">Income vs. expenses <span class="link">★</span></div><canvas id="rg1" style="max-height:130px;"></canvas></div>
+            <div class="card"><div class="ctitle" style="font-size:13px;">Net worth trend <span class="link">★</span></div><canvas id="rg2" style="max-height:130px;"></canvas></div>
+            <div class="card"><div class="ctitle" style="font-size:13px;">Cash flow <span class="link">★</span></div><canvas id="rg3" style="max-height:130px;"></canvas></div>
+          </div>
+          <div class="row r3" style="margin-top:14px;">
+            <div class="card"><div class="ctitle" style="font-size:13px;">Top merchants <span class="link">★</span></div><canvas id="rg4" style="max-height:130px;"></canvas></div>
+            <div class="card"><div class="ctitle" style="font-size:13px;">Spending by member <span class="link">★</span></div><canvas id="rg5" style="max-height:130px;"></canvas></div>
+            <div class="card" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;border-style:dashed;color:var(--grey);"><div style="font-size:26px;line-height:1;color:var(--blue2);">+</div><div style="font-size:13px;margin-top:6px;">Build a custom chart</div></div>
+          </div>
+
+          <!-- custom chart builder -->
+          <div class="topbar" style="margin:20px 0 6px;"><h2 style="font-size:16px;">Custom chart builder</h2></div>
+          <div class="row r21">
+            <div class="card">
+              <div class="row r2" style="gap:10px;">
+                <div class="field" style="margin-bottom:8px;"><label>Measure</label><select><option>Amount spent</option><option>Transaction count</option><option>Account balance</option><option>Net worth</option></select></div>
+                <div class="field" style="margin-bottom:8px;"><label>Group by</label><select><option>Category</option><option>Merchant</option><option>Account</option><option>Member</option><option>Month</option></select></div>
+                <div class="field" style="margin-bottom:8px;"><label>Chart type</label><select><option>Bar</option><option>Line</option><option>Donut</option><option>Stacked bar</option></select></div>
+                <div class="field" style="margin-bottom:8px;"><label>Date range</label><select><option>Last 6 months</option><option>This year</option></select></div>
+              </div>
+              <div class="field" style="margin-bottom:8px;"><label>Filters</label><input placeholder="e.g. category = Food, account = Joint Checking"></div>
+              <label style="font-size:13px;display:flex;gap:8px;align-items:center;color:var(--ink);"><input type="checkbox"> Share with household (otherwise personal)</label>
+              <div style="margin-top:12px;display:flex;gap:8px;"><button class="btn sm">Save to dashboard</button><button class="btn ghost sm">Preview</button></div>
+            </div>
+            <div class="card"><div class="ctitle" style="font-size:13px;">Preview</div><canvas id="rPrev" style="max-height:200px;"></canvas></div>
+          </div>
+          <div class="note"><b>Visibility-aware:</b> every report and custom chart only includes data you&rsquo;re permitted to see. Saved charts are personal unless shared with the household.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 9. MANAGE CATEGORIES ============ -->
+  <section class="screen" data-name="9 · Manage categories">
+    <p class="scaption">Manage categories — reached from Budgets &rarr; &ldquo;Manage categories.&rdquo; Add, rename, recolor, reorder, and delete categories &amp; sub-categories.</p>
+    <div class="frame">
+      <div class="bar"><span class="dot" style="background:#ec6a5e"></span><span class="dot" style="background:#f4bf4f"></span><span class="dot" style="background:#61c554"></span><span class="url">app.pfm.com/budgets/categories</span></div>
+      <div class="app">
+        <aside class="side">
+          <div class="brand"><span class="logo"></span> PFM</div>
+          <nav class="nav">
+            <a><span class="ic"></span> Dashboard</a><a><span class="ic"></span> Transactions</a>
+            <a class="on"><span class="ic"></span> Budgets</a><a><span class="ic"></span> Accounts</a>
+            <a><span class="ic"></span> Reports</a><a><span class="ic"></span> Household</a><a><span class="ic"></span> Settings</a>
+          </nav>
+          <div class="hh">Sharma Family · 2 members</div>
+        </aside>
+        <div class="main">
+          <div class="topbar"><h2>Manage categories</h2><button class="btn sm">+ Add category</button></div>
+          <div class="row r21">
+            <div class="card" style="padding:8px 6px;">
+              <table class="tx">
+                <thead><tr><th style="width:24px"></th><th>Category</th><th>Type</th><th style="text-align:right">Actions</th></tr></thead>
+                <tbody>
+                  <tr><td class="muted" style="cursor:grab">⋮⋮</td><td><span class="cat" style="border:0;background:transparent;padding-left:0;"><span class="cd" style="background:#2F855A"></span> <b>Food</b></span></td><td class="muted">parent</td><td style="text-align:right"><span class="link" style="cursor:pointer">Rename</span> · <span class="link" style="cursor:pointer">Color</span> · <span class="link" style="cursor:pointer;color:var(--p0)">Delete</span></td></tr>
+                  <tr><td></td><td style="padding-left:30px;"><span class="muted">↳ Groceries</span></td><td class="muted">sub</td><td style="text-align:right"><span class="link" style="cursor:pointer">Rename</span> · <span class="link" style="cursor:pointer;color:var(--p0)">Delete</span></td></tr>
+                  <tr><td></td><td style="padding-left:30px;"><span class="muted">↳ Dining out</span></td><td class="muted">sub</td><td style="text-align:right"><span class="link" style="cursor:pointer">Rename</span> · <span class="link" style="cursor:pointer;color:var(--p0)">Delete</span></td></tr>
+                  <tr><td></td><td style="padding-left:30px;"><span class="link" style="cursor:pointer">+ Add sub-category</span></td><td></td><td></td></tr>
+                  <tr><td class="muted" style="cursor:grab">⋮⋮</td><td><span class="cat" style="border:0;background:transparent;padding-left:0;"><span class="cd" style="background:#2E6DA4"></span> <b>Housing</b></span></td><td class="muted">parent</td><td style="text-align:right"><span class="link" style="cursor:pointer">Rename</span> · <span class="link" style="cursor:pointer">Color</span> · <span class="link" style="cursor:pointer;color:var(--p0)">Delete</span></td></tr>
+                  <tr><td></td><td style="padding-left:30px;"><span class="muted">↳ Mortgage</span></td><td class="muted">sub</td><td style="text-align:right"><span class="link" style="cursor:pointer">Rename</span> · <span class="link" style="cursor:pointer;color:var(--p0)">Delete</span></td></tr>
+                  <tr><td></td><td style="padding-left:30px;"><span class="muted">↳ Utilities</span></td><td class="muted">sub</td><td style="text-align:right"><span class="link" style="cursor:pointer">Rename</span> · <span class="link" style="cursor:pointer;color:var(--p0)">Delete</span></td></tr>
+                  <tr><td class="muted" style="cursor:grab">⋮⋮</td><td><span class="cat" style="border:0;background:transparent;padding-left:0;"><span class="cd" style="background:#B9770E"></span> <b>Kids</b></span></td><td class="muted">parent</td><td style="text-align:right"><span class="link" style="cursor:pointer">Rename</span> · <span class="link" style="cursor:pointer">Color</span> · <span class="link" style="cursor:pointer;color:var(--p0)">Delete</span></td></tr>
+                  <tr><td class="muted" style="cursor:grab">⋮⋮</td><td><span class="cat" style="border:0;background:transparent;padding-left:0;"><span class="cd" style="background:#2F855A"></span> <b>Income</b> <span class="tag t-shared" style="font-size:10px;">system</span></span></td><td class="muted">parent · income</td><td style="text-align:right"><span class="muted">protected</span></td></tr>
+                  <tr><td></td><td style="padding-left:30px;"><span class="muted">↳ Priya&rsquo;s salary</span></td><td class="muted">sub · income</td><td style="text-align:right"><span class="link" style="cursor:pointer">Rename</span> · <span class="link" style="cursor:pointer;color:var(--p0)">Delete</span></td></tr>
+                  <tr><td></td><td style="padding-left:30px;"><span class="muted">↳ Arjun&rsquo;s salary</span></td><td class="muted">sub · income</td><td style="text-align:right"><span class="link" style="cursor:pointer">Rename</span> · <span class="link" style="cursor:pointer;color:var(--p0)">Delete</span></td></tr>
+                  <tr><td></td><td style="padding-left:30px;"><span class="muted">↳ Bonus</span></td><td class="muted">sub · income</td><td style="text-align:right"><span class="link" style="cursor:pointer">Rename</span> · <span class="link" style="cursor:pointer;color:var(--p0)">Delete</span></td></tr>
+                  <tr><td></td><td style="padding-left:30px;"><span class="muted">↳ Investment income</span></td><td class="muted">sub · income</td><td style="text-align:right"><span class="link" style="cursor:pointer">Rename</span> · <span class="link" style="cursor:pointer;color:var(--p0)">Delete</span></td></tr>
+                  <tr><td></td><td style="padding-left:30px;"><span class="link" style="cursor:pointer">+ Add income sub-category</span></td><td></td><td></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div>
+              <div class="card">
+                <div class="ctitle">Add / edit category</div>
+                <div class="field"><label>Name</label><input value="Food"></div>
+                <div class="field"><label>Parent (optional)</label><select><option>— None (top-level) —</option><option>Food</option><option>Housing</option><option>Kids</option></select></div>
+                <div class="field"><label>Color</label><div style="display:flex;gap:6px;">
+                  <span style="width:22px;height:22px;border-radius:6px;background:#2F855A;border:2px solid #14532d;cursor:pointer"></span>
+                  <span style="width:22px;height:22px;border-radius:6px;background:#2E6DA4;cursor:pointer"></span>
+                  <span style="width:22px;height:22px;border-radius:6px;background:#B9770E;cursor:pointer"></span>
+                  <span style="width:22px;height:22px;border-radius:6px;background:#8e44ad;cursor:pointer"></span>
+                  <span style="width:22px;height:22px;border-radius:6px;background:#7c8aa0;cursor:pointer"></span>
+                </div></div>
+                <button class="btn sm">Save category</button>
+              </div>
+              <div class="card" style="margin-top:14px;">
+                <div class="ctitle" style="color:var(--p0)">Delete &ldquo;Dining out&rdquo;?</div>
+                <p class="muted" style="margin-top:0;">38 transactions use this category. Choose what happens to them:</p>
+                <div class="field"><label>Reassign transactions to</label><select><option>Food (parent)</option><option>Groceries</option><option>Uncategorized</option></select></div>
+                <div style="display:flex;gap:8px;"><button class="btn sm" style="background:var(--p0)">Delete &amp; reassign</button><button class="btn ghost sm">Cancel</button></div>
+              </div>
+            </div>
+          </div>
+          <div class="note"><b>Safe deletion:</b> deleting a category with transactions always prompts to reassign or merge them first. Core categories (e.g. Income) are protected and can&rsquo;t be deleted. Drag the <span style="font-family:monospace">⋮⋮</span> handle to reorder.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 8. SETTINGS / ACCOUNT ============ -->
+  <section class="screen" data-name="8 · Settings">
+    <p class="scaption">Account settings — reached from the profile avatar (top-right). Manage name, email, password, and MFA.</p>
+    <div class="frame">
+      <div class="bar"><span class="dot" style="background:#ec6a5e"></span><span class="dot" style="background:#f4bf4f"></span><span class="dot" style="background:#61c554"></span><span class="url">app.pfm.com/settings</span></div>
+      <div class="app">
+        <aside class="side">
+          <div class="brand"><span class="logo"></span> PFM</div>
+          <nav class="nav">
+            <a><span class="ic"></span> Dashboard</a><a><span class="ic"></span> Transactions</a>
+            <a><span class="ic"></span> Budgets</a><a><span class="ic"></span> Accounts</a>
+            <a><span class="ic"></span> Reports</a><a><span class="ic"></span> Household</a>
+            <a class="on"><span class="ic"></span> Settings</a>
+          </nav>
+          <div class="hh">Sharma Family · 2 members</div>
+        </aside>
+        <div class="main">
+          <div class="topbar"><h2>Settings</h2><div class="who"><div class="avatar">P</div></div></div>
+          <div class="row r2">
+            <div class="card">
+              <div class="ctitle">Profile</div>
+              <div class="field"><label>Full name</label><input value="Priya Sharma"></div>
+              <div class="field"><label>Email</label><input value="priya@email.com"></div>
+              <div class="muted" style="margin-bottom:10px;">Changing your email requires re-verification.</div>
+              <button class="btn sm">Save profile</button>
+            </div>
+            <div class="card">
+              <div class="ctitle">Login &amp; security</div>
+              <div class="field"><label>Current password</label><input type="password" value="········"></div>
+              <div class="field"><label>New password</label><input type="password" placeholder="••••••••"></div>
+              <div class="field"><label>Confirm new password</label><input type="password" placeholder="••••••••"></div>
+              <button class="btn sm">Update password</button>
+            </div>
+          </div>
+          <div class="row r2" style="margin-top:16px;">
+            <div class="card">
+              <div class="ctitle">Two-factor authentication</div>
+              <div class="acct"><div class="l"><span class="bankico" style="background:linear-gradient(135deg,#2F855A,#1F4E79)"></span><div><div>Google Authenticator <span class="tag t-balance">Active</span></div><div class="muted">Primary · added Jun 4</div></div></div><button class="btn ghost sm">Manage</button></div>
+              <div class="acct" style="border-bottom:0;"><div class="l"><span class="bankico"></span><div><div>Email code <span class="tag t-shared">Backup</span></div><div class="muted">priya@email.com</div></div></div><button class="btn ghost sm">Manage</button></div>
+              <div style="margin-top:10px;display:flex;gap:8px;"><button class="btn ghost sm">View recovery codes</button></div>
+              <div class="note" style="margin-top:12px;">MFA is required and can&rsquo;t be turned off — only the method can be changed. Passkeys coming in a later release.</div>
+            </div>
+            <div class="card">
+              <div class="ctitle">Preferences &amp; data</div>
+              <div class="field"><label>Base currency</label><select><option>USD ($)</option><option>EUR (€)</option><option>GBP (£)</option></select></div>
+              <div class="field"><label>Month starts on</label><select><option>1st</option><option>Payday</option></select></div>
+              <div style="display:flex;gap:8px;margin-top:6px;"><button class="btn ghost sm">Export my data</button><button class="btn ghost sm" style="color:var(--p0);border-color:var(--p0);">Delete account</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+const tabsEl=document.getElementById('tabs');
+const screens=[...document.querySelectorAll('.screen')];
+let charted=false;
+screens.forEach((s,i)=>{
+  const b=document.createElement('button');
+  b.className='tab'+(i===2?' active':'');
+  b.innerHTML=s.dataset.name;
+  b.onclick=()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    screens.forEach(x=>x.classList.remove('active'));
+    b.classList.add('active'); s.classList.add('active');
+    if(s.dataset.name.includes('Dashboard')) drawCharts();
+    if(s.dataset.name.includes('Reports')) drawReports();
+  };
+  tabsEl.appendChild(b);
+});
+screens[2].classList.add('active'); // default dashboard
+
+// expand/collapse budget sub-categories (collapsed by default)
+document.querySelectorAll('.exp').forEach(btn=>{
+  btn.addEventListener('click',e=>{
+    e.stopPropagation();
+    btn.closest('.bgroup').classList.toggle('open');
+  });
+});
+
+function drawCharts(){
+  if(charted) return; charted=true;
+  const blue='#2E6DA4',green='#2F855A',amber='#B9770E',red='#C0392B',slate='#7c8aa0',line='#e4e8ef',grey='#6b7686';
+  const baseOpts={plugins:{legend:{labels:{font:{size:11},color:grey},boxWidth:10}},
+    scales:{x:{grid:{display:false},ticks:{color:grey,font:{size:10}}},y:{grid:{color:line},ticks:{color:grey,font:{size:10}}}}};
+  new Chart(document.getElementById('cIE'),{type:'bar',data:{labels:['Jan','Feb','Mar','Apr','May','Jun'],
+    datasets:[{label:'Income',data:[11200,11200,11400,11200,11400,11400],backgroundColor:green,borderRadius:4},
+      {label:'Expenses',data:[6400,7100,6900,6300,6320,6820],backgroundColor:blue,borderRadius:4}]},
+    options:{...baseOpts,plugins:{legend:{display:false}}}});
+  const money=v=>'$'+v.toLocaleString();
+  new Chart(document.getElementById('cCat'),{type:'doughnut',data:{labels:['Housing','Food','Kids','Transport','Other'],
+    datasets:[{data:[2400,1060,520,210,2630],backgroundColor:[blue,green,amber,slate,'#c3ccd8']}]},
+    options:{cutout:'62%',plugins:{legend:{position:'right',labels:{font:{size:11},color:grey,boxWidth:10}},
+      tooltip:{callbacks:{label:c=>{const t=c.dataset.data.reduce((a,b)=>a+b,0);
+        const pct=Math.round(c.parsed/t*100); return ' '+c.label+': '+money(c.parsed)+' ('+pct+'%)';}}}}}});
+  renderTrend('actual');
+}
+
+let trendChart=null;
+function renderTrend(mode){
+  const ctx=document.getElementById('cTrend'); if(!ctx) return;
+  const blue='#2E6DA4',amber='#d99a2b',grey='#6b7686',line='#e4e8ef';
+  const m=['Jan','Feb','Mar','Apr','May','Jun'];
+  const money=v=>'$'+v.toLocaleString();
+  const opts={plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+c.dataset.label+': '+money(c.parsed.y)}}},
+    scales:{x:{stacked:true,grid:{display:false},ticks:{color:grey,font:{size:10}}},y:{stacked:true,grid:{color:line},ticks:{color:grey,font:{size:10}}}}};
+  let datasets;
+  if(mode==='smoothed'){
+    datasets=[{label:'Spending (amortized)',data:[6700,6600,6600,6600,6620,7120],backgroundColor:blue,borderRadius:4}];
+  } else {
+    datasets=[{label:'Spending',data:[6400,6300,6300,6300,6320,6820],backgroundColor:blue,borderRadius:4},
+      {label:'Annual expense (from reserve)',data:[0,0,1800,0,0,0],backgroundColor:amber,borderRadius:4}];
+  }
+  if(trendChart) trendChart.destroy();
+  trendChart=new Chart(ctx,{type:'bar',data:{labels:m,datasets},options:opts});
+}
+drawCharts();
+document.querySelectorAll('#trendMode button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#trendMode button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); renderTrend(b.dataset.mode);
+}));
+
+let reported=false;
+function drawReports(){
+  if(reported) return; reported=true;
+  const blue='#2E6DA4',green='#2F855A',amber='#B9770E',red='#C0392B',slate='#7c8aa0',purple='#8e44ad',line='#e4e8ef',grey='#6b7686';
+  const M=['Jan','Feb','Mar','Apr','May','Jun'];
+  const base={plugins:{legend:{labels:{font:{size:10},color:grey,boxWidth:9}}},
+    scales:{x:{grid:{display:false},ticks:{color:grey,font:{size:9}}},y:{grid:{color:line},ticks:{color:grey,font:{size:9}}}}};
+  const mini={plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:grey,font:{size:8}}},y:{display:false}}};
+  // featured: stacked spending by category
+  new Chart(document.getElementById('rMain'),{type:'bar',data:{labels:M,datasets:[
+    {label:'Housing',data:[2400,2400,2400,2400,2400,2400],backgroundColor:blue},
+    {label:'Food',data:[980,1120,1040,990,1010,1060],backgroundColor:green},
+    {label:'Kids',data:[500,560,520,540,510,520],backgroundColor:amber},
+    {label:'Transport',data:[180,240,210,190,200,210],backgroundColor:slate},
+    {label:'Other',data:[2340,2780,2730,2180,2200,2630],backgroundColor:'#c3ccd8'}]},
+    options:{...base,scales:{x:{stacked:true,grid:{display:false},ticks:{color:grey,font:{size:9}}},y:{stacked:true,grid:{color:line},ticks:{color:grey,font:{size:9}}}}}});
+  // gallery minis
+  new Chart(document.getElementById('rg1'),{type:'bar',data:{labels:M,datasets:[
+    {label:'Income',data:[11200,11200,11400,11200,11400,11400],backgroundColor:green},
+    {label:'Expenses',data:[6400,7100,6900,6300,6320,6820],backgroundColor:blue}]},options:mini});
+  new Chart(document.getElementById('rg2'),{type:'line',data:{labels:M,datasets:[
+    {data:[331,334,336,338,340,342],borderColor:blue,backgroundColor:'rgba(46,109,164,.12)',fill:true,tension:.35,pointRadius:0}]},options:mini});
+  new Chart(document.getElementById('rg3'),{type:'bar',data:{labels:M,datasets:[
+    {data:[4800,4100,4500,4900,5080,4580],backgroundColor:green}]},options:mini});
+  new Chart(document.getElementById('rg4'),{type:'bar',data:{labels:['Costco','Amazon','Whole Foods','Shell','Netflix'],datasets:[
+    {data:[420,380,310,160,90],backgroundColor:blue}]},options:{...mini,indexAxis:'y',scales:{x:{display:false},y:{grid:{display:false},ticks:{color:grey,font:{size:8}}}}}});
+  new Chart(document.getElementById('rg5'),{type:'doughnut',data:{labels:['Priya','Arjun'],datasets:[
+    {data:[3900,2920],backgroundColor:[blue,green]}]},options:{plugins:{legend:{display:false}},cutout:'60%'}});
+  // builder preview
+  new Chart(document.getElementById('rPrev'),{type:'bar',data:{labels:['Housing','Food','Kids','Transport','Other'],datasets:[
+    {data:[2400,1060,520,210,2630],backgroundColor:[blue,green,amber,slate,'#c3ccd8'],borderRadius:4}]},
+    options:{...base,plugins:{legend:{display:false}}}});
+}
+</script>
+</body>
+</html>

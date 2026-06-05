@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PFM — AI Features &amp; Architecture</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+:root{
+  --blue:#1F4E79;--blue2:#2E6DA4;--ink:#1c2530;--grey:#5b6675;--line:#e2e6ec;--bg:#f6f8fb;--card:#fff;
+  --p0:#C0392B;--p1:#B9770E;--p2:#1F8A4C;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55;}
+.wrap{max-width:1000px;margin:0 auto;padding:46px 28px 80px;}
+header.cover{text-align:center;padding:36px 0 22px;border-bottom:3px solid var(--blue);margin-bottom:30px;}
+header.cover h1{margin:0;font-size:32px;color:var(--blue);}
+header.cover .sub{font-size:17px;color:var(--grey);margin-top:6px;}
+header.cover .meta{font-size:13px;color:var(--grey);margin-top:12px;}
+h2{color:var(--blue);font-size:23px;margin:44px 0 6px;padding-bottom:8px;border-bottom:1px solid var(--line);}
+h3{font-size:17px;margin:24px 0 6px;}
+p{margin:8px 0;} .lead{color:var(--grey);font-size:15px;}
+ul{margin:8px 0;padding-left:20px;} li{margin:4px 0;}
+table{width:100%;border-collapse:collapse;margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:13.5px;}
+th{background:var(--blue);color:#fff;text-align:left;padding:9px 11px;font-weight:600;}
+td{padding:9px 11px;border-top:1px solid var(--line);vertical-align:top;}
+tr:nth-child(even) td{background:#fafbfd;}
+.pill{font-weight:700;font-size:11px;padding:2px 7px;border-radius:6px;color:#fff;white-space:nowrap;}
+.P1{background:var(--p1)}.P2{background:var(--p2)}.P3{background:#555}
+.ph{font-weight:700;font-size:11px;padding:2px 7px;border-radius:6px;color:#fff;background:var(--blue2);white-space:nowrap;}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-top:14px;box-shadow:0 1px 2px rgba(20,40,80,.04);}
+.diagram{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin-top:14px;text-align:center;box-shadow:0 1px 2px rgba(20,40,80,.04);}
+.mermaid{text-align:center;}
+.note{background:#eef3f9;border-left:4px solid var(--blue2);padding:11px 15px;border-radius:6px;font-size:13.5px;margin-top:14px;}
+.warn{background:#fbf4e8;border-left-color:var(--p1);}
+.good{background:#eef7ef;border-left-color:var(--p2);}
+.grp{font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--blue2);margin-top:22px;}
+footer{margin-top:56px;text-align:center;color:var(--grey);font-size:12px;border-top:1px solid var(--line);padding-top:18px;}
+.toc a{color:var(--blue2);text-decoration:none;} .toc a:hover{text-decoration:underline;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="cover">
+  <h1>Personal Finance Manager</h1>
+  <div class="sub">AI Features &amp; Architecture</div>
+  <div class="meta">Prepared for Harsh · June 4, 2026 · v0.1 · informs Phase 2–3 roadmap</div>
+</header>
+
+<p class="lead">AI is the product's chosen differentiator. This document captures (1) the AI feature set, grouped by capability and sequenced across releases, and (2) the architecture that enables them — data access, the agent, model strategy, and how users interact in natural language.</p>
+
+<p class="toc lead"><b>Contents:</b> <a href="#feat">1. AI Features</a> · <a href="#guard">2. Guardrails</a> · <a href="#arch">3. Architecture</a> · <a href="#data">4. Data Access</a> · <a href="#agent">5. The Agent</a> · <a href="#model">6. Model Strategy</a> · <a href="#chan">7. Channels</a> · <a href="#dec">8. Decisions</a></p>
+
+<!-- ===================== AI FEATURES ===================== -->
+<h2 id="feat">1. AI Features</h2>
+<p class="lead">Five groups, ordered from least to most ambitious. Earlier groups are the foundation; conversational and household-intelligence features build on them.</p>
+
+<div class="grp">Group 1 — Understanding what happened (descriptive)</div>
+<p>The safest to ship first: these describe data rather than advise. They also produce the clean, enriched data the later groups depend on.</p>
+<table>
+  <thead><tr><th>Feature</th><th>What it does</th><th>Phase</th></tr></thead>
+  <tbody>
+    <tr><td>Smart categorization</td><td>Auto-categorize transactions, learn from corrections, honor custom categories &amp; sub-categories</td><td><span class="ph">P1</span></td></tr>
+    <tr><td>Recurring &amp; subscription detection</td><td>Detect recurring charges, including annual ones — feeds sinking-fund budgets</td><td><span class="ph">P1</span></td></tr>
+    <tr><td>Anomaly detection</td><td>Flag unusual charges, category spikes, duplicates, or a bill larger than usual</td><td><span class="ph">P2</span></td></tr>
+    <tr><td>Plain-language monthly summary</td><td>&ldquo;Here&rsquo;s how June went&rdquo; — over/under-spend and changes vs. last month</td><td><span class="ph">P2</span></td></tr>
+  </tbody>
+</table>
+
+<div class="grp">Group 2 — Anticipating what's next (predictive)</div>
+<p>Turns the 360° view forward-looking. Higher value, moderate complexity.</p>
+<table>
+  <thead><tr><th>Feature</th><th>What it does</th><th>Phase</th></tr></thead>
+  <tbody>
+    <tr><td>Cash-flow forecast</td><td>Project end-of-month balance; warn of a shortfall before it happens</td><td><span class="ph">P2</span></td></tr>
+    <tr><td>Bill prediction</td><td>&ldquo;Your electric bill is usually ~$180 and is due in 6 days&rdquo;</td><td><span class="ph">P2</span></td></tr>
+    <tr><td>Sinking-fund shortfall alerts</td><td>&ldquo;You&rsquo;re $1,000 behind on the property-tax reserve with 2 months left&rdquo;</td><td><span class="ph">P2</span></td></tr>
+    <tr><td>Goal projection</td><td>&ldquo;At this rate you&rsquo;ll hit your vacation goal in March, one month late&rdquo;</td><td><span class="ph">P3</span></td></tr>
+  </tbody>
+</table>
+
+<div class="grp">Group 3 — Suggesting what to do (prescriptive / coaching)</div>
+<p>Most valuable, most care required — framed as informational suggestions, never directives (see Guardrails).</p>
+<table>
+  <thead><tr><th>Feature</th><th>What it does</th><th>Phase</th></tr></thead>
+  <tbody>
+    <tr><td>Budget coaching</td><td>Suggest budget adjustments from real behavior (&ldquo;you spend $550 on groceries, not $400 — raise it?&rdquo;)</td><td><span class="ph">P2</span></td></tr>
+    <tr><td>Savings opportunities</td><td>Surface duplicate subscriptions, unused services, rising fees, cheaper patterns</td><td><span class="ph">P3</span></td></tr>
+    <tr><td>Spending nudges</td><td>Gentle, opt-in prompts when a category is trending over</td><td><span class="ph">P3</span></td></tr>
+  </tbody>
+</table>
+
+<div class="grp">Group 4 — Conversational access (natural language)</div>
+<p>Ties everything together. Launches on in-app chat; external messengers follow (see Channels).</p>
+<table>
+  <thead><tr><th>Feature</th><th>What it does</th><th>Phase</th></tr></thead>
+  <tbody>
+    <tr><td>Ask-your-finances Q&amp;A</td><td>&ldquo;How much did we spend on dining last quarter?&rdquo; — answered in plain English, returning a chart where useful</td><td><span class="ph">P3</span></td></tr>
+    <tr><td>Conversational actions</td><td>Read-only navigation/queries via chat (recategorize, set a budget) — never moving money</td><td><span class="ph">P3</span></td></tr>
+  </tbody>
+</table>
+
+<div class="grp">Group 5 — Household intelligence</div>
+<p>Uses the multi-member model as a unique angle competitors mostly lack. Always respects per-account visibility.</p>
+<table>
+  <thead><tr><th>Feature</th><th>What it does</th><th>Phase</th></tr></thead>
+  <tbody>
+    <tr><td>Per-member spending patterns</td><td>Insights by member, within what each is permitted to see</td><td><span class="ph">P3</span></td></tr>
+    <tr><td>Fair-split / contribution insights</td><td>Who contributes what to shared expenses</td><td><span class="ph">P3</span></td></tr>
+    <tr><td>Shared-goal nudges</td><td>Goal reminders reflecting both partners&rsquo; activity</td><td><span class="ph">P3</span></td></tr>
+  </tbody>
+</table>
+
+<!-- ===================== GUARDRAILS ===================== -->
+<h2 id="guard">2. Cross-cutting Guardrails</h2>
+<p class="lead">These apply to every AI feature and are part of the architecture, not an afterthought.</p>
+<ul>
+  <li><b>Informational, not advice.</b> Output is framed as information and suggestions; the product is not a financial or legal advisor and says so.</li>
+  <li><b>Read-only by design.</b> The AI can analyze and suggest but can never move money, place trades, or initiate transfers — those remain manual user actions.</li>
+  <li><b>Visibility-aware.</b> The AI only ever sees data the asking user is permitted to see, enforced at the tool layer (per the household sharing rules).</li>
+  <li><b>Transparent &amp; explainable.</b> Insights show why they appeared and what data drove them.</li>
+  <li><b>Correctable.</b> Users can dismiss or correct insights; the system learns and avoids being noisy.</li>
+  <li><b>Privacy-first data handling.</b> No-retention/no-training agreements with providers; minimize what data is sent; full audit of AI data access.</li>
+</ul>
+
+<!-- ===================== ARCHITECTURE ===================== -->
+<h2 id="arch">3. Architecture Overview</h2>
+<p class="lead">The AI lives as a backend service between the data and the user-facing channels — never in the client. One implementation serves every channel, keeps secrets and guardrails server-side, and sits next to the data.</p>
+<div class="diagram">
+  <pre class="mermaid">
+flowchart TB
+  subgraph CH[Channels]
+    W[Web app chat]:::ch
+    M[Mobile app chat]:::ch
+    T[Telegram / WhatsApp adapter<br/>follow-on]:::chl
+  end
+  API[API gateway<br/>auth · rate limit]:::api
+  subgraph AIS[AI / Agent Service]
+    ORCH[Agent orchestrator]:::core
+    GR[Guardrails<br/>read-only · visibility · advice framing]:::grd
+    SCH[Scheduler<br/>proactive insights]:::sch
+  end
+  subgraph TOOLS[Read-only, visibility-aware tools]
+    Q[Query engine<br/>transactions · budgets · net worth]:::tool
+    F[Forecast / analytics]:::tool
+    R[Retrieval / context RAG]:::tool
+  end
+  DATA[(Financial data store)]:::db
+  ABS[Model abstraction layer]:::abs
+  subgraph LLM[LLM providers]
+    H[Hosted frontier API<br/>no-retention — launch]:::llm
+    S[Self-hosted open models<br/>later / hybrid]:::llml
+  end
+
+  W --> API
+  M --> API
+  T --> API
+  API --> ORCH
+  SCH --> ORCH
+  ORCH --> GR
+  GR --> TOOLS
+  TOOLS --> DATA
+  ORCH --> ABS
+  ABS --> H
+  ABS -.-> S
+
+  classDef ch fill:#eaf1f8,stroke:#2E6DA4,color:#1c2530;
+  classDef chl fill:#f3f5f8,stroke:#9aa7b6,color:#5b6675,stroke-dasharray:4 3;
+  classDef api fill:#e6eef7,stroke:#1F4E79,color:#1c2530;
+  classDef core fill:#1F4E79,stroke:#1F4E79,color:#fff;
+  classDef grd fill:#fbf1df,stroke:#B9770E,color:#1c2530;
+  classDef sch fill:#eef7ef,stroke:#1F8A4C,color:#14532d;
+  classDef tool fill:#eaf1f8,stroke:#2E6DA4,color:#1c2530;
+  classDef db fill:#e9edf2,stroke:#5b6675,color:#1c2530;
+  classDef abs fill:#efe7f7,stroke:#7c4fb0,color:#1c2530;
+  classDef llm fill:#e6f5ec,stroke:#1F8A4C,color:#14532d;
+  classDef llml fill:#f3f5f8,stroke:#9aa7b6,color:#5b6675,stroke-dasharray:4 3;
+  </pre>
+</div>
+
+<!-- ===================== DATA ACCESS ===================== -->
+<h2 id="data">4. How AI Accesses the Data</h2>
+<p>The model never receives raw transaction dumps — that is costly, leaks data, and doesn&rsquo;t scale. Instead it uses <b>tool calling</b>: the model is given structured tools and calls only the ones it needs.</p>
+<ul>
+  <li><b>Structured tools</b> like <code>get_transactions(filters)</code>, <code>get_budget_status()</code>, <code>forecast_cashflow()</code>, <code>get_net_worth()</code>.</li>
+  <li><b>Shared query layer.</b> These tools are the same metric/dimension engine that powers the custom chart builder — one query layer serves both charts and AI.</li>
+  <li><b>Retrieval (RAG)</b> adds context (the household&rsquo;s categories, history) where descriptive reasoning needs it.</li>
+  <li><b>Every tool is read-only and visibility-aware</b> — the guardrails are enforced here, at the data boundary.</li>
+</ul>
+
+<!-- ===================== AGENT ===================== -->
+<h2 id="agent">5. The Agent</h2>
+<p>An <b>agent</b> orchestrates multi-step reasoning. Simple questions are a single tool call; complex ones run a reason → call tool → observe → continue loop. The same agent serves both user-initiated chat and scheduler-initiated proactive insights — one brain, two triggers.</p>
+<div class="diagram">
+  <pre class="mermaid">
+flowchart LR
+  U[User question<br/>or scheduled trigger]:::s --> P[Agent plans steps]:::step
+  P --> D{Need data?}:::dec
+  D -- Yes --> C[Call read-only tool]:::step
+  C --> O[Observe result]:::step
+  O --> D
+  D -- No --> A[Compose answer<br/>+ chart if useful]:::done
+  classDef s fill:#1F4E79,color:#fff,stroke:#1F4E79;
+  classDef step fill:#eaf1f8,color:#1c2530,stroke:#2E6DA4;
+  classDef dec fill:#fbf1df,color:#1c2530,stroke:#B9770E;
+  classDef done fill:#e6f5ec,color:#14532d,stroke:#1F8A4C;
+  </pre>
+</div>
+<div class="note"><b>Example:</b> &ldquo;Can we afford a $3,000 vacation in March?&rdquo; → the agent calls the forecast tool, the goals tool, and the budget tool, combines the results, and answers — all read-only.</div>
+
+<!-- ===================== MODEL STRATEGY ===================== -->
+<h2 id="model">6. Model Strategy</h2>
+<p>A <b>model abstraction layer</b> sits between the agent and any LLM, so the provider is a swappable component. Ship with one model behind it; add routing and providers later without touching tools, agent, prompts, or guardrails.</p>
+<h3>Privacy posture &amp; the hosted → self-hosted path</h3>
+<table>
+  <thead><tr><th>Stage</th><th>Approach</th><th>Trade-off</th></tr></thead>
+  <tbody>
+    <tr><td><b>Launch</b></td><td>Hosted frontier API under a zero-retention / no-training agreement</td><td>Best quality, fastest; relies on a vendor agreement</td></tr>
+    <tr><td><b>Transition</b></td><td>Hybrid — move cheap, high-volume tasks (categorization, recurring) to self-hosted open models; keep complex reasoning hosted</td><td>Proves out ops gradually; lower risk</td></tr>
+    <tr><td><b>Later</b></td><td>Self-hosted open models for more/all workloads</td><td>Max privacy/control; GPU hosting, scaling &amp; monitoring burden</td></tr>
+  </tbody>
+</table>
+<div class="good note"><b>What makes the migration safe:</b> build an <b>evaluation harness</b> now (representative queries + expected outcomes) to compare models objectively before switching; depend only on capabilities open models also support (notably reliable <b>tool/function calling</b>); keep a clean data/tool boundary. Then the move is &ldquo;write a new adapter and re-point config,&rdquo; not a rewrite.</div>
+<div class="warn note"><b>The real cost of self-hosting is operational, not architectural</b> — GPU hosting and its cost, scaling/latency, and monitoring. The abstraction layer lets you defer that burden without penalty.</div>
+
+<!-- ===================== CHANNELS ===================== -->
+<h2 id="chan">7. Natural-Language Channels</h2>
+<p>Because the AI is a backend service with a clean API, any channel can talk to it. <b>Launch:</b> in-app chat in the mobile and web apps — the most secure, full-fidelity surface we control. <b>Follow-on:</b> external messengers via thin channel adapters.</p>
+<div class="diagram">
+  <pre class="mermaid">
+flowchart TB
+  subgraph NOW[Launch]
+    IM[In-app chat<br/>mobile + web]:::now
+  end
+  subgraph NEXT[Follow-on]
+    TG[Telegram bot adapter]:::next
+    WA[WhatsApp adapter]:::next
+  end
+  IM --> SVC[AI / Agent Service]:::core
+  TG -.-> SVC
+  WA -.-> SVC
+  classDef now fill:#e6f5ec,stroke:#1F8A4C,color:#14532d;
+  classDef next fill:#f3f5f8,stroke:#9aa7b6,color:#5b6675,stroke-dasharray:4 3;
+  classDef core fill:#1F4E79,stroke:#1F4E79,color:#fff;
+  </pre>
+</div>
+<h3>What follow-on channels require</h3>
+<ul>
+  <li><b>Secure account linking.</b> A messenger user must be verified and bound to their PFM account and permissions (one-time linking).</li>
+  <li><b>Privacy on third-party platforms.</b> Telegram bot messages are not end-to-end encrypted, so detailed balances over external chat is a real consideration. Approach: redacted/summary replies on external channels, opt-in required, and treat the in-app chat as the full-fidelity surface.</li>
+</ul>
+
+<!-- ===================== DECISIONS ===================== -->
+<h2 id="dec">8. Decisions Captured</h2>
+<table>
+  <thead><tr><th>Topic</th><th>Decision</th></tr></thead>
+  <tbody>
+    <tr><td>AI placement</td><td>Backend AI/agent service serving all channels; never in the client</td></tr>
+    <tr><td>Data access</td><td>Tool calling over a shared, read-only, visibility-aware query layer; RAG for context</td></tr>
+    <tr><td>Agent</td><td>Yes — orchestrates multi-step reasoning; serves chat and scheduled proactive insights</td></tr>
+    <tr><td>Model flexibility</td><td>Provider-abstraction layer; ship one model first, add routing/providers later</td></tr>
+    <tr><td>Privacy posture</td><td>Hosted frontier API + no-retention at launch, with a deliberate path to hybrid then self-hosted</td></tr>
+    <tr><td>Migration readiness</td><td>Build an evaluation harness now; depend only on tool-calling-capable models</td></tr>
+    <tr><td>Channels</td><td>In-app chat (mobile + web) at launch; Telegram/WhatsApp as follow-on adapters</td></tr>
+    <tr><td>Safety</td><td>Read-only AI, informational-not-advice framing, visibility enforcement, audit</td></tr>
+  </tbody>
+</table>
+
+<footer>Personal Finance Manager — AI Features &amp; Architecture · v0.1</footer>
+</div>
+<script>
+mermaid.initialize({startOnLoad:true,theme:"base",flowchart:{curve:"basis",nodeSpacing:42,rankSpacing:46},
+  themeVariables:{fontFamily:"-apple-system,Segoe UI,Arial,sans-serif",fontSize:"12.5px"}});
+</script>
+</body>
+</html>

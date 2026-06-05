@@ -1,0 +1,228 @@
+# Personal Finance Manager — Phase 1 Epics & Stories
+
+**Prepared for:** Harsh
+**Date:** June 4, 2026
+**Version:** 0.1
+**Purpose:** Sprint-ready breakdown of Phase 1, structured for **parallel development by multiple people** and clean merging. Stories trace to the Phase 1 PRD (`phase1-spec.md`) and Technical Design (`phase1-technical-design.html`).
+
+---
+
+## 1. How This Is Organized for Parallel Work
+
+Phase 1 is split into one **foundation epic** (the shared kernel everyone builds on) and several **feature epics** that can be developed in parallel once the kernel lands.
+
+**The rule:** the foundation epic (Epic 0) must merge first. It establishes the data model, auth, the visibility/permission helper, the API conventions, and the design system — the shared contracts. After that, feature teams work on separate epics in their own branches against those contracts, stubbing dependencies where needed.
+
+### 1.1 Dependency graph
+
+```mermaid
+flowchart TD
+  E0[Epic 0 — Foundation / Shared Kernel]:::k
+  E1[Epic 1 — Household & Membership]:::a
+  E2[Epic 2 — Accounts & Aggregation]:::a
+  E4[Epic 4 — Categories]:::a
+  E3[Epic 3 — Statement Import]:::b
+  E5[Epic 5 — Transactions]:::b
+  E6[Epic 6 — Budgets & Sinking Funds]:::b
+  E7[Epic 7 — Dashboard & Reports]:::c
+
+  E0 --> E1
+  E0 --> E2
+  E0 --> E4
+  E2 --> E3
+  E2 --> E5
+  E4 --> E5
+  E4 --> E6
+  E5 --> E7
+  E6 --> E7
+  classDef k fill:#1F4E79,color:#fff,stroke:#1F4E79;
+  classDef a fill:#eaf1f8,stroke:#2E6DA4,color:#1c2530;
+  classDef b fill:#fbf1df,stroke:#B9770E,color:#1c2530;
+  classDef c fill:#e6f5ec,stroke:#1F8A4C,color:#14532d;
+```
+
+### 1.2 Suggested parallel waves
+
+| Wave | Epics (parallel) | Notes |
+|---|---|---|
+| **Wave 1** | Epic 0 | Foundation — everyone depends on it; land first. |
+| **Wave 2** | Epic 1, Epic 2, Epic 4 | Independent feature areas on the kernel. |
+| **Wave 3** | Epic 3, Epic 5, Epic 6 | Build on accounts/categories; stub where needed. |
+| **Wave 4** | Epic 7 | Integrates transactions + budgets; lands last. |
+
+### 1.3 Working agreements (parallel + merge)
+
+- **One epic = one team = one long-lived feature branch**, with short-lived story branches merged into it via PR.
+- **Contracts first.** API request/response shapes and the visibility-scope helper are defined in Epic 0 and treated as stable interfaces. Changes to a shared contract require a cross-team PR review.
+- **Stub dependencies.** Teams mock upstream modules (e.g. Transactions stubs Accounts) so no one is blocked; integrate against real modules at the wave boundary.
+- **Vertical slices.** Each story includes backend + API + UI where applicable, behind a feature flag if partially complete.
+- **Definition of Done:** code + tests, meets acceptance criteria, visibility rules respected, PR reviewed, merged to the epic branch with green CI.
+
+### 1.4 Story conventions
+
+- IDs: `E<epic>.<story>` (e.g. `E2.3`). **PRD ref** links to the spec requirement. **Size:** S / M / L (rough).
+- Acceptance criteria (AC) are testable and double as the basis for automated tests.
+
+---
+
+## 2. Epic 0 — Foundation / Shared Kernel
+
+**Goal:** the shared substrate all feature epics build on. **Must merge before Wave 2.** Owned by a lead/platform pair.
+
+- **E0.1 — Project scaffolding & CI/CD.** *(Size: M)*
+  - AC: Repo bootstrapped (client + API + DB migrations); local dev runs with one command.
+  - AC: CI runs lint + tests on PR; main protected; preview/staging deploy configured.
+- **E0.2 — Data model & migrations.** *(PRD: Tech Design §2 · Size: L)*
+  - AC: Tables for user, household, membership, account, transaction, category, budget, sinking_fund, category_rule, mfa_method per the ER model.
+  - AC: Account scoped to `household_id` + `owner_user_id`; category self-referential; `dedup_hash` on transaction; nullable `tag` field reserved for Phase 2.
+- **E0.3 — Authentication.** *(PRD: S-1, S-3 · Size: M)*
+  - AC: Email/password signup, password hashing, email verification, login, session/token issuance + expiry/refresh.
+- **E0.4 — Mandatory MFA.** *(PRD: S-2 · Size: L)*
+  - AC: TOTP (Google Authenticator) and email-code methods; primary + backup; recovery codes generated once.
+  - AC: MFA enrollment enforced during onboarding before app access; cannot be disabled (method changeable).
+  - AC: Rate-limiting/lockout on failed attempts; recovery via backup/codes.
+- **E0.5 — Authorization & visibility helper.** *(PRD: A-4, NFR-2 · Size: L)*
+  - AC: A central helper resolves, per request, the viewer's accessible account IDs and field-level rules (shared / private / balance-only).
+  - AC: All repository/query methods require the visibility scope as a mandatory parameter; totals computed from the same scope.
+  - AC: Unit tests prove no cross-member leakage for each visibility state.
+- **E0.6 — Design system / component library.** *(PRD: NFR-1, NFR-6 · Size: M)*
+  - AC: Shared tokens (color/typography), base components (nav shell, cards, tables, forms, buttons, charts wrapper), responsive layout, accessibility baseline.
+- **E0.7 — API conventions & gateway.** *(Size: S)*
+  - AC: Standard error/validation envelope, pagination, auth middleware, rate limiting; documented for all teams.
+
+---
+
+## 3. Epic 1 — Household & Membership
+
+**Goal:** households can be created and shared with configurable roles. **Depends on:** E0. **Parallel with:** Epics 2, 4.
+
+- **E1.1 — Create household on signup.** *(PRD: H-1 · Size: S)*
+  - AC: First user becomes Owner; household has name, base currency, month-start.
+- **E1.2 — Invite member with role.** *(PRD: H-2, H-4 · Size: M)*
+  - AC: Invite by email with role (co-owner / member); unique expiring link; pending invites listed; resend/revoke.
+- **E1.3 — Accept invite & join.** *(PRD: H-3 · Size: M)*
+  - AC: Invitee creates own login (+ MFA via E0.4), joins household, sees shared view per permissions.
+  - AC: Email already registered → link to this household after confirmation (one active household per user in Phase 1).
+- **E1.4 — Manage roles & remove member.** *(PRD: H-4, H-5 · Size: M)*
+  - AC: Owner/co-owner changes a member's role; removes a member (access revoked immediately; their accounts detached not deleted).
+  - AC: Cannot remove/demote the last owner.
+- **E1.5 — Household settings.** *(PRD: H-1 · Size: S)*
+  - AC: Edit household name, currency, month-start; member list shows roles and last login.
+
+---
+
+## 4. Epic 2 — Accounts & Aggregation (Plaid)
+
+**Goal:** connect accounts via Plaid and control their visibility. **Depends on:** E0. **Parallel with:** Epics 1, 4.
+
+- **E2.1 — Plaid Link connect & token exchange.** *(PRD: A-1 · Size: L)*
+  - AC: Client launches Plaid Link; backend creates link_token, exchanges public_token, stores encrypted access_token + item_id; **no bank credentials stored**.
+- **E2.2 — Account model & initial sync.** *(PRD: A-1 · Size: M)*
+  - AC: Accounts + balances imported; transactions fetched, enriched, categorized (default mapping), stored.
+- **E2.3 — Ongoing transaction sync & webhooks.** *(PRD: A-6 · Size: M)*
+  - AC: Handle `SYNC_UPDATES_AVAILABLE` (delta sync) and `ITEM_LOGIN_REQUIRED` (reconnect state).
+- **E2.4 — Per-account visibility.** *(PRD: A-4 · Size: M)*
+  - AC: Owner sets shared / private / balance-only; only the owner can change; enforced via E0.5; defaults (joint→shared, individual→private).
+- **E2.5 — Joint de-duplication.** *(PRD: A-5 · Size: M)*
+  - AC: Same joint account connected by two members is detected and merged; never double-counted in totals.
+- **E2.6 — Connection health & re-auth.** *(PRD: A-6 · Size: S)*
+  - AC: Broken/expired connections surfaced with reconnect prompt.
+- **E2.7 — Manual account.** *(PRD: A-3 · Size: S)*
+  - AC: Add a manual cash/unsupported account and hand-enter transactions.
+
+---
+
+## 5. Epic 3 — Statement Import
+
+**Goal:** import transactions from statement files with no stored credentials. **Depends on:** E2 (account model). **Parallel with:** Epics 5, 6.
+
+- **E3.1 — Upload & parse.** *(PRD: A-2 · Size: M)*
+  - AC: Accept CSV/OFX/QFX to encrypted store; parse rows; report row count.
+- **E3.2 — Account detection & selection.** *(PRD: A-2 · Size: M)*
+  - AC: Detect account from header (mask/institution); pre-select target; allow new manual account; **must pick if unmatched** (no silent assignment).
+- **E3.3 — Column mapping.** *(PRD: A-2 · Size: M)*
+  - AC: Map file columns → Date / Merchant / Amount; remember mapping per source for repeat imports.
+- **E3.4 — Dedup & commit.** *(PRD: A-2 · Size: M)*
+  - AC: Skip duplicates via `dedup_hash` (within account + across Plaid data); commit and report imported/skipped counts.
+
+---
+
+## 6. Epic 4 — Categories & Sub-categories
+
+**Goal:** household category structure with safe management. **Depends on:** E0. **Parallel with:** Epics 1, 2.
+
+- **E4.1 — Default categories seed.** *(PRD: C-1 · Size: S)*
+  - AC: Sensible defaults seeded per household; protected Income category present.
+- **E4.2 — Manage categories.** *(PRD: C-2 · Size: M)*
+  - AC: Add, rename, recolor, reorder, delete; reachable from Budgets → Manage categories; system categories protected.
+- **E4.3 — Sub-categories.** *(PRD: C-3 · Size: M)*
+  - AC: Nest under a parent; roll up to parent (parent total = subs + direct spend); collapsed by default in UI.
+- **E4.4 — Income sub-categories.** *(PRD: C-4 · Size: M)*
+  - AC: Income supports sub-categories; tracked received vs. expected (not a spend cap); visibility-aware (balance-only rolls up to total without line items).
+- **E4.5 — Safe deletion.** *(PRD: C-5 · Size: M)*
+  - AC: Deleting a category with transactions prompts reassign/merge; deletion cannot orphan transactions; parent with children prompts handling of children.
+- **E4.6 — Recategorize & rules.** *(PRD: C-6 · Size: M)*
+  - AC: Change a transaction's category; optionally create a merchant rule that auto-applies going forward.
+
+---
+
+## 7. Epic 5 — Transactions
+
+**Goal:** view, search, and correct transactions. **Depends on:** E2, E4. **Parallel with:** Epics 3, 6.
+
+- **E5.1 — Transaction list.** *(PRD: D-4 · Size: M)*
+  - AC: Visibility-scoped list across accessible accounts; search + filter (date, account, category); pagination.
+- **E5.2 — Recategorize from list.** *(PRD: C-6, D-4 · Size: S)*
+  - AC: Inline recategorize; optional rule creation (shares logic with E4.6).
+- **E5.3 — Reserve-funded payment marking.** *(PRD: B-6 · Size: M · depends on E6.3)*
+  - AC: A transaction matching a sinking-fund item is linked and badged ("annual · from reserve"); auto-detected with user confirm/override.
+
+---
+
+## 8. Epic 6 — Budgets & Sinking Funds
+
+**Goal:** monthly budgets plus amortized annual expenses. **Depends on:** E4. **Parallel with:** Epics 3, 5.
+
+- **E6.1 — Monthly budgets.** *(PRD: B-1 · Size: M)*
+  - AC: Set budget per category/sub-category; track spent vs. remaining for current period; sub-budgets roll up to parent.
+- **E6.2 — Budget visualization.** *(PRD: B-2 · Size: M)*
+  - AC: Bars show magnitude (length ∝ budget) and utilization (fill = spent); near-limit/over states; sub-categories collapsed by default, expand on demand.
+- **E6.3 — Sinking funds (amortized).** *(PRD: B-3, B-5 · Size: L)*
+  - AC: Mark recurring non-monthly expense (annual/semi/quarterly) as amortized; virtual reserve accrues monthly; actual payment draws from reserve (no budget spike).
+  - AC: Reserve progress shown (saved vs. target, next due, behind/ahead); monthly view amortized, yearly view true total; **virtual reserves only**.
+  - AC: Method selectable (amortized default vs. actual); mid-year start defaults to gradual catch-up; shortfall flagged if reserve insufficient.
+- **E6.4 — Income tracking.** *(PRD: B-4 · Size: S)*
+  - AC: Income shows received vs. expected per income (sub-)category; not a spend limit.
+
+> **Note:** the Actual/Smoothed spending toggle (PRD B-7) is **Phase 2** — out of scope here.
+
+---
+
+## 9. Epic 7 — Dashboard & Reports (Phase 1 subset)
+
+**Goal:** the at-a-glance shared view. **Depends on:** E5, E6. **Integrates last (Wave 4).**
+
+- **E7.1 — Dashboard KPIs & view toggle.** *(PRD: D-1, D-2 · Size: M)*
+  - AC: KPIs (income, spending, budget remaining); budget vs. actual; household/personal toggle (personal = own accounts only; household respects visibility).
+- **E7.2 — Default charts.** *(PRD: D-3 · Size: M)*
+  - AC: Spending by category, spending over time (**6-month default**, 3M/6M toggle), income vs. expenses, budget vs. actual; interactive (hover amounts); visibility-aware; show actuals.
+- **E7.3 — Reserve-funded marking on spending-over-time.** *(PRD: B-6 · Size: S)*
+  - AC: In the Actual view, the reserve-funded portion of a month is a distinct, labeled segment so the spike is self-explaining.
+
+> Custom chart builder, net worth charts, and rental cash-flow report are **Phase 2**.
+
+---
+
+## 10. Cross-Cutting Requirements (apply to every epic)
+
+- **Visibility:** every data read goes through the E0.5 scope helper. No endpoint bypasses it.
+- **Security:** encryption in transit/at rest; no bank credentials stored; audit sensitive actions (member/role/visibility changes, exports).
+- **Privacy:** data export & deletion supported (foundational).
+- **Testing:** unit + integration tests per story; visibility leakage tests are mandatory for any endpoint returning account/transaction data.
+- **Accessibility & responsive:** all UI meets the E0.6 baseline.
+
+---
+
+## 11. Phase 1 Definition of Done (rollup)
+
+All epics complete and integrated such that the [PRD §7 acceptance checklist] passes: a two-person household can sign up with MFA, invite a partner with a role, connect via Plaid and/or import statements with visibility controls, manage categories/sub-categories, run budgets with sub-categories and a sinking fund, and view an accurate shared dashboard with the household/personal toggle and default charts — securely on the responsive web app.

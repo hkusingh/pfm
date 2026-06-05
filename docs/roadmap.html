@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PFM — Phased Roadmap</title>
+<style>
+:root{
+  --blue:#1F4E79;--blue2:#2E6DA4;--ink:#1c2530;--grey:#5b6675;--line:#e2e6ec;--bg:#f6f8fb;--card:#fff;
+  --p1:#2E6DA4;--p2:#1F8A4C;--p3:#8e44ad;--ai:#B9770E;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55;}
+.wrap{max-width:1040px;margin:0 auto;padding:46px 28px 80px;}
+header.cover{text-align:center;padding:36px 0 22px;border-bottom:3px solid var(--blue);margin-bottom:28px;}
+header.cover h1{margin:0;font-size:32px;color:var(--blue);}
+header.cover .sub{font-size:17px;color:var(--grey);margin-top:6px;}
+header.cover .meta{font-size:13px;color:var(--grey);margin-top:12px;}
+h2{color:var(--blue);font-size:23px;margin:42px 0 6px;padding-bottom:8px;border-bottom:1px solid var(--line);}
+h3{font-size:17px;margin:20px 0 6px;}
+p{margin:8px 0;} .lead{color:var(--grey);font-size:15px;}
+ul{margin:6px 0;padding-left:20px;} li{margin:4px 0;}
+
+/* timeline swimlanes */
+.tl{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:16px;overflow-x:auto;box-shadow:0 1px 2px rgba(20,40,80,.04);}
+.tl-grid{display:grid;grid-template-columns:150px 1fr 1fr 1fr;gap:0;min-width:680px;}
+.tl-head{font-weight:700;font-size:12.5px;color:#fff;padding:8px 10px;text-align:center;border-radius:7px;margin:0 3px 8px;}
+.tl-lane-label{font-size:12.5px;font-weight:600;color:var(--ink);padding:9px 8px;border-top:1px solid var(--line);display:flex;align-items:center;}
+.tl-cell{border-top:1px solid var(--line);padding:6px 3px;display:flex;align-items:center;}
+.bar{font-size:11.5px;color:#fff;padding:5px 9px;border-radius:6px;width:100%;line-height:1.3;}
+.bar.empty{background:transparent;}
+.b1{background:var(--p1)} .b2{background:var(--p2)} .b3{background:var(--p3)} .bai{background:var(--ai)}
+.b-soft{opacity:.4;}
+
+.phase{background:var(--card);border:1px solid var(--line);border-left-width:5px;border-radius:12px;padding:18px 20px;margin-top:16px;box-shadow:0 1px 2px rgba(20,40,80,.04);}
+.phase h3{margin-top:0;display:flex;align-items:center;gap:10px;font-size:19px;}
+.phase .theme{color:var(--grey);font-style:italic;font-size:14px;margin:-2px 0 10px;}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+@media(max-width:760px){.cols,.tl-grid{grid-template-columns:1fr;} .tl-grid{min-width:0;}}
+.block h4{margin:6px 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:.4px;color:var(--blue2);}
+.aiblock{background:#fbf4e8;border:1px solid #ecdcbf;border-radius:8px;padding:10px 12px;margin-top:6px;}
+.aiblock h4{color:var(--ai);}
+.exit{background:#eef7ef;border-left:4px solid var(--p2);padding:9px 13px;border-radius:6px;font-size:13.5px;margin-top:12px;}
+.chip{display:inline-block;font-size:11px;font-weight:700;color:#fff;padding:2px 9px;border-radius:14px;}
+.note{background:#eef3f9;border-left:4px solid var(--blue2);padding:11px 15px;border-radius:6px;font-size:13.5px;margin-top:14px;}
+table{width:100%;border-collapse:collapse;margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:13.5px;}
+th{background:var(--blue);color:#fff;text-align:left;padding:9px 11px;}
+td{padding:9px 11px;border-top:1px solid var(--line);vertical-align:top;}
+tr:nth-child(even) td{background:#fafbfd;}
+footer{margin-top:56px;text-align:center;color:var(--grey);font-size:12px;border-top:1px solid var(--line);padding-top:18px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="cover">
+  <h1>Personal Finance Manager</h1>
+  <div class="sub">Phased Roadmap</div>
+  <div class="meta">Prepared for Harsh · June 4, 2026 · v0.1 · sequence-based (not calendar-committed)</div>
+</header>
+
+<p class="lead">Three phases take the product from a trustworthy shared budgeting tool to an AI-differentiated, multi-channel household finance platform. Phases are sequenced by dependency and value, not pinned to dates. AI features are woven into Phase 2 (the differentiator) and Phase 3 (depth and conversation).</p>
+
+<h3>Phasing principles</h3>
+<ul>
+  <li><b>Habit before depth.</b> Phase 1 ships the daily-use budgeting loop on a secure, shared foundation — the minimum that retains users.</li>
+  <li><b>Differentiate where it counts.</b> Phase 2 spends the differentiation budget on AI insights, once there is enough enriched data to power them.</li>
+  <li><b>Broaden and converse.</b> Phase 3 widens the 360° view, adds the conversational agent, and moves the habit to mobile.</li>
+</ul>
+
+<!-- ===== TIMELINE ===== -->
+<h2>1. Roadmap at a Glance</h2>
+<p class="lead">Workstreams across the three phases. Lighter bars indicate enhancement of an earlier capability.</p>
+<div class="tl">
+  <div class="tl-grid">
+    <div></div>
+    <div class="tl-head" style="background:var(--p1)">Phase 1 — MVP</div>
+    <div class="tl-head" style="background:var(--p2)">Phase 2 — Differentiate</div>
+    <div class="tl-head" style="background:var(--p3)">Phase 3 — Expand</div>
+
+    <div class="tl-lane-label">Foundation &amp; trust</div>
+    <div class="tl-cell"><span class="bar b1">Household, roles, mandatory MFA, security</span></div>
+    <div class="tl-cell"><span class="bar b1 b-soft">Notifications, step-up auth</span></div>
+    <div class="tl-cell"><span class="bar b1 b-soft">Audit log, passkeys</span></div>
+
+    <div class="tl-lane-label">Accounts &amp; data</div>
+    <div class="tl-cell"><span class="bar b1">Aggregation, enrichment, CSV import</span></div>
+    <div class="tl-cell"><span class="bar b1 b-soft">Connection health, more institutions</span></div>
+    <div class="tl-cell"><span class="bar b1 b-soft">Investment holdings</span></div>
+
+    <div class="tl-lane-label">Budgeting</div>
+    <div class="tl-cell"><span class="bar b1">Categories, sub-cats, budgets, sinking funds</span></div>
+    <div class="tl-cell"><span class="bar b1 b-soft">Rollover, refinements</span></div>
+    <div class="tl-cell"><span class="bar b1 b-soft">Goals &amp; planning</span></div>
+
+    <div class="tl-lane-label">Reports &amp; charts</div>
+    <div class="tl-cell"><span class="bar b1">Default dashboards &amp; charts</span></div>
+    <div class="tl-cell"><span class="bar b1 b-soft">Custom chart builder, net worth, rental cash flow</span></div>
+    <div class="tl-cell"><span class="bar b1 b-soft">Investment &amp; planning reports</span></div>
+
+    <div class="tl-lane-label">AI</div>
+    <div class="tl-cell"><span class="bar bai b-soft">Categorization, recurring detection</span></div>
+    <div class="tl-cell"><span class="bar bai">AI platform + descriptive, predictive &amp; coaching insights</span></div>
+    <div class="tl-cell"><span class="bar bai">Conversational agent, household intelligence</span></div>
+
+    <div class="tl-lane-label">Platform / reach</div>
+    <div class="tl-cell"><span class="bar b1">Responsive web app</span></div>
+    <div class="tl-cell"><span class="bar b1 b-soft">Web polish</span></div>
+    <div class="tl-cell"><span class="bar b3">Native mobile, Telegram/WhatsApp</span></div>
+  </div>
+</div>
+
+<!-- ===== PHASE 1 ===== -->
+<h2>2. Phase Details</h2>
+
+<div class="phase" style="border-left-color:var(--p1);">
+  <h3><span class="chip" style="background:var(--p1)">Phase 1</span> MVP — Trusted shared view + budgeting</h3>
+  <div class="theme">Goal: a household can connect accounts and run an accurate, shared budget — securely.</div>
+  <div class="cols">
+    <div class="block">
+      <h4>Core scope</h4>
+      <ul>
+        <li>Household, invites, configurable co-owner/member roles</li>
+        <li>Mandatory MFA (Google Authenticator + email), encryption, privacy controls</li>
+        <li>Account aggregation + enrichment; manual &amp; CSV/OFX import</li>
+        <li>Per-account visibility (shared / private / balance-only); joint de-dup</li>
+        <li>Categories, sub-categories, monthly budgets, amortized sinking funds</li>
+        <li>Spending dashboard + default charts; recategorize &amp; rules</li>
+        <li>Responsive web app</li>
+      </ul>
+    </div>
+    <div class="block">
+      <div class="aiblock">
+        <h4>AI in this phase</h4>
+        Foundational, behind the scenes: <b>smart categorization</b> and <b>recurring/annual detection</b> (feeds sinking funds). No conversational surface yet — this is where the enriched data that powers Phase 2 gets created.
+      </div>
+      <h4 style="margin-top:12px;">Dependencies</h4>
+      <ul><li>Aggregator selected (Plaid vs. MX benchmark)</li><li>Backend, data store, auth/MFA in place</li></ul>
+    </div>
+  </div>
+  <div class="exit"><b>Exit criteria:</b> a two-person household can sign up with MFA, connect/import accounts with visibility controls, run a monthly budget with sub-categories and sinking funds, and see accurate shared spending — on the web.</div>
+</div>
+
+<!-- ===== PHASE 2 ===== -->
+<div class="phase" style="border-left-color:var(--p2);">
+  <h3><span class="chip" style="background:var(--p2)">Phase 2</span> Differentiate — AI insights + net worth</h3>
+  <div class="theme">Goal: turn the data into proactive, plain-language guidance — the competitive edge.</div>
+  <div class="cols">
+    <div class="block">
+      <h4>Core scope</h4>
+      <ul>
+        <li>Household net worth + trend (assets &amp; liabilities)</li>
+        <li>Property tags + rental cash-flow report (income − expenses = net, per property)</li>
+        <li>Custom chart builder; interactive report controls</li>
+        <li>Notifications (alerts, bills, insights); step-up auth for sensitive actions</li>
+        <li>Connection health, broader institution coverage, budget rollover</li>
+      </ul>
+    </div>
+    <div class="block">
+      <div class="aiblock">
+        <h4>AI in this phase — the platform + first insights</h4>
+        <ul style="margin:4px 0;">
+          <li><b>AI platform:</b> backend agent, read-only visibility-aware tools, model-abstraction layer (hosted + no-retention), guardrails, eval harness</li>
+          <li><b>Descriptive:</b> anomaly alerts, plain-language monthly summary</li>
+          <li><b>Predictive:</b> cash-flow forecast, bill prediction, sinking-fund shortfall alerts</li>
+          <li><b>Coaching:</b> budget coaching from real behavior</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="exit"><b>Exit criteria:</b> the household receives accurate proactive insights (anomalies, forecasts, monthly summary, budget coaching) and can see net worth — powered by the AI platform with guardrails and an eval harness in place.</div>
+</div>
+
+<!-- ===== PHASE 3 ===== -->
+<div class="phase" style="border-left-color:var(--p3);">
+  <h3><span class="chip" style="background:var(--p3)">Phase 3</span> Expand — Planning, investments, conversation, mobile</h3>
+  <div class="theme">Goal: widen the 360° view, let users talk to their finances, and move the habit to mobile.</div>
+  <div class="cols">
+    <div class="block">
+      <h4>Core scope</h4>
+      <ul>
+        <li>Goals &amp; scenario / what-if planning</li>
+        <li>Investment holdings, performance &amp; allocation</li>
+        <li>Native mobile apps (iOS/Android)</li>
+        <li>Audit/access log; passkeys</li>
+      </ul>
+    </div>
+    <div class="block">
+      <div class="aiblock">
+        <h4>AI in this phase — conversation + household intelligence</h4>
+        <ul style="margin:4px 0;">
+          <li><b>Conversational agent:</b> ask-your-finances Q&amp;A in plain English, returning charts — <b>in-app chat first</b></li>
+          <li><b>Channels:</b> Telegram / WhatsApp adapters (linked &amp; redacted) as follow-on</li>
+          <li><b>Household intelligence:</b> per-member patterns, fair-split &amp; shared-goal insights (visibility-aware)</li>
+          <li><b>Coaching+:</b> savings opportunities, opt-in spending nudges</li>
+          <li><b>Model evolution:</b> begin hybrid / self-hosted migration using the eval harness</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="exit"><b>Exit criteria:</b> users can converse with their finances in-app, get household-aware insights and planning, manage investments, and use the product on native mobile.</div>
+</div>
+
+<!-- ===== CRITICAL PATH ===== -->
+<h2>3. Dependencies &amp; Critical Path</h2>
+<table>
+  <thead><tr><th>Capability</th><th>Depends on</th></tr></thead>
+  <tbody>
+    <tr><td>AI insights (Phase 2)</td><td>Enriched transaction data &amp; categorization from Phase 1</td></tr>
+    <tr><td>AI platform / agent</td><td>Shared query layer (also powers the custom chart builder)</td></tr>
+    <tr><td>Conversational agent (Phase 3)</td><td>AI platform + tools from Phase 2; in-app chat surface</td></tr>
+    <tr><td>Telegram/WhatsApp</td><td>In-app chat + secure account-linking + redaction policy</td></tr>
+    <tr><td>Net worth &amp; investments</td><td>Aggregation coverage for assets/brokerage accounts</td></tr>
+    <tr><td>Self-hosted models</td><td>Eval harness + GPU hosting/ops readiness</td></tr>
+  </tbody>
+</table>
+
+<h2>4. Key Assumptions &amp; Risks</h2>
+<ul>
+  <li><b>Aggregator choice</b> (Plaid vs. MX) confirmed before Phase 1 build; enrichment quality affects AI accuracy.</li>
+  <li><b>AI data privacy</b> rests on a no-retention provider agreement; revisit before scaling.</li>
+  <li><b>Cost management</b>: route cheap tasks to small models; AI usage and aggregator fees scale with users.</li>
+  <li><b>Scope discipline</b>: conversational AI and external channels are deliberately Phase 3 — resist pulling them earlier before the data and platform are solid.</li>
+</ul>
+
+<div class="note"><b>Next deliverable:</b> the Phase 1 product spec — detailing the MVP scope above into buildable requirements.</div>
+
+<footer>Personal Finance Manager — Phased Roadmap · v0.1</footer>
+</div>
+</body>
+</html>
