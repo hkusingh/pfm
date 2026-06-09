@@ -1,0 +1,418 @@
+// PFM data model — Epic E0.2
+// Money stored in integer minor units (cents) + explicit currency.
+// Visibility enforced at the application layer via resolveScope (@pfm/core).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  mfaMethods    MfaMethod[]
+  recoveryCodes RecoveryCode[]
+  sessions      Session[]
+  memberships   Membership[]
+  invitesSent   Invite[]       @relation("InvitedBy")
+  accounts      Account[]
+  importBatches ImportBatch[]
+  auditLogs     AuditLog[]
+  categoryRules CategoryRule[]
+}
+
+model Session {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ─── MFA ──────────────────────────────────────────────────────────────────────
+
+enum MfaType {
+  totp
+  email
+}
+
+model MfaMethod {
+  id          String    @id @default(cuid())
+  userId      String
+  type        MfaType
+  // Encrypted at rest (AES-256-GCM via ENCRYPTION_KEY env)
+  secret      String
+  isPrimary   Boolean   @default(false)
+  confirmedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model RecoveryCode {
+  id       String    @id @default(cuid())
+  userId   String
+  codeHash String
+  usedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ─── Household ────────────────────────────────────────────────────────────────
+
+model Household {
+  id            String   @id @default(cuid())
+  name          String
+  baseCurrency  String   @default("USD")
+  // Day of month when the budget period starts (1–28)
+  monthStartDay Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  memberships    Membership[]
+  invites        Invite[]
+  accounts       Account[]
+  categories     Category[]
+  categoryRules  CategoryRule[]
+  budgets        Budget[]
+  sinkingFunds   SinkingFund[]
+  importBatches  ImportBatch[]
+  columnMappings ColumnMapping[]
+  auditLogs      AuditLog[]
+}
+
+enum MemberRole {
+  owner
+  member
+}
+
+enum MemberStatus {
+  active
+  removed
+}
+
+model Membership {
+  id          String       @id @default(cuid())
+  householdId String
+  userId      String
+  role        MemberRole
+  status      MemberStatus @default(active)
+  joinedAt    DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([householdId, userId])
+  @@index([userId])
+}
+
+enum InviteStatus {
+  pending
+  accepted
+  revoked
+}
+
+model Invite {
+  id              String       @id @default(cuid())
+  householdId     String
+  email           String
+  role            MemberRole
+  token           String       @unique
+  expiresAt       DateTime
+  status          InviteStatus @default(pending)
+  invitedByUserId String
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  invitedBy User      @relation("InvitedBy", fields: [invitedByUserId], references: [id])
+
+  @@index([householdId])
+  @@index([email])
+}
+
+// ─── Accounts ─────────────────────────────────────────────────────────────────
+
+enum AccountType {
+  checking
+  savings
+  credit_card
+  investment
+  loan
+  mortgage
+  other
+}
+
+enum AccountSource {
+  manual
+  import
+  // plaid reserved for Phase 2
+}
+
+enum Visibility {
+  shared
+  private
+  balance_only
+}
+
+model Account {
+  id           String        @id @default(cuid())
+  householdId  String
+  ownerUserId  String
+  name         String
+  type         AccountType
+  source       AccountSource @default(manual)
+  institution  String?
+  // Last 4 digits of account number
+  mask         String?
+  balanceMinor Int           @default(0)
+  currency     String        @default("USD")
+  visibility   Visibility    @default(shared)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  household     Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  owner         User          @relation(fields: [ownerUserId], references: [id])
+  transactions  Transaction[]
+  importBatches ImportBatch[]
+
+  @@index([householdId])
+  @@index([ownerUserId])
+}
+
+// ─── Transactions ─────────────────────────────────────────────────────────────
+
+model Transaction {
+  id                 String    @id @default(cuid())
+  accountId          String
+  postedDate         DateTime  @db.Date
+  merchant           String?
+  merchantNormalized String?
+  amountMinor        Int
+  currency           String    @default("USD")
+  categoryId         String?
+  // SHA-256 of account+date+amount+merchantNormalized — prevents duplicate imports
+  dedupHash          String
+  sinkingFundId      String?
+  isReserveFunded    Boolean   @default(false)
+  importBatchId      String?
+  // Reserved for Phase 2 (search/filter tag)
+  tag                String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  account     Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  category    Category?    @relation(fields: [categoryId], references: [id])
+  sinkingFund SinkingFund? @relation(fields: [sinkingFundId], references: [id])
+  importBatch ImportBatch? @relation(fields: [importBatchId], references: [id])
+
+  @@unique([accountId, dedupHash])
+  @@index([accountId])
+  @@index([categoryId])
+  @@index([postedDate])
+}
+
+// ─── Categories ───────────────────────────────────────────────────────────────
+
+enum CategoryKind {
+  expense
+  income
+}
+
+model Category {
+  id          String       @id @default(cuid())
+  householdId String
+  parentId    String?
+  name        String
+  color       String?
+  sortOrder   Int          @default(0)
+  // System categories (e.g. Income) cannot be deleted
+  isSystem    Boolean      @default(false)
+  kind        CategoryKind @default(expense)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  household    Household      @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  parent       Category?      @relation("CategoryParent", fields: [parentId], references: [id])
+  children     Category[]     @relation("CategoryParent")
+  transactions Transaction[]
+  rules        CategoryRule[]
+  budgets      Budget[]
+  sinkingFunds SinkingFund[]
+
+  @@index([householdId])
+  @@index([parentId])
+}
+
+model CategoryRule {
+  id              String   @id @default(cuid())
+  householdId     String
+  // Substring match against merchantNormalized
+  merchantMatch   String
+  categoryId      String
+  createdByUserId String
+  createdAt       DateTime @default(now())
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  category  Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  createdBy User      @relation(fields: [createdByUserId], references: [id])
+
+  @@index([householdId])
+}
+
+// ─── Budgets ──────────────────────────────────────────────────────────────────
+
+model Budget {
+  id          String   @id @default(cuid())
+  householdId String
+  categoryId  String
+  // Month key, e.g. "2026-06"
+  period      String
+  amountMinor Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  category  Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([householdId, categoryId, period])
+  @@index([householdId, period])
+}
+
+// ─── Sinking Funds ────────────────────────────────────────────────────────────
+
+enum SinkingFundCadence {
+  annual
+  semi
+  quarterly
+}
+
+enum SinkingFundMethod {
+  amortized
+  actual
+}
+
+enum SinkingFundStartMode {
+  gradual
+  frontload
+}
+
+model SinkingFund {
+  id                  String               @id @default(cuid())
+  householdId         String
+  categoryId          String
+  cadence             SinkingFundCadence
+  totalMinor          Int
+  nextDueDate         DateTime             @db.Date
+  method              SinkingFundMethod    @default(amortized)
+  reserveBalanceMinor Int                  @default(0)
+  startMode           SinkingFundStartMode @default(gradual)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  household    Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  category     Category      @relation(fields: [categoryId], references: [id])
+  transactions Transaction[]
+
+  @@index([householdId])
+}
+
+// ─── Import ───────────────────────────────────────────────────────────────────
+
+enum ImportStatus {
+  pending
+  processing
+  done
+  failed
+}
+
+model ImportBatch {
+  id             String       @id @default(cuid())
+  householdId    String
+  accountId      String?
+  uploaderUserId String
+  importedCount  Int          @default(0)
+  skippedCount   Int          @default(0)
+  status         ImportStatus @default(pending)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  household    Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  account      Account?      @relation(fields: [accountId], references: [id])
+  uploader     User          @relation(fields: [uploaderUserId], references: [id])
+  files        ImportFile[]
+  transactions Transaction[]
+
+  @@index([householdId])
+}
+
+model ImportFile {
+  id                String   @id @default(cuid())
+  importBatchId     String
+  // Encrypted path in GCS
+  storageKey        String
+  // SHA-256 of filename+size+first-row — used to recall column mappings
+  sourceFingerprint String
+  originalName      String
+  createdAt         DateTime @default(now())
+
+  importBatch ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+
+  @@index([importBatchId])
+}
+
+model ColumnMapping {
+  id                String   @id @default(cuid())
+  householdId       String
+  // Matches ImportFile.sourceFingerprint
+  sourceFingerprint String
+  // JSON: { date: string; merchant: string; amount: string; }
+  mapping           Json
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@unique([householdId, sourceFingerprint])
+}
+
+// ─── Audit ────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  householdId String
+  actorUserId String
+  action      String
+  targetType  String
+  targetId    String
+  // Arbitrary metadata (before/after values, etc.)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  actor     User      @relation(fields: [actorUserId], references: [id])
+
+  @@index([householdId, createdAt])
+  @@index([actorUserId])
+}
