@@ -29,7 +29,8 @@
       "Bash(/opt/homebrew/bin/pnpm --filter @pfm/core test)",
       "Bash(git -C /Users/harsh/projects/pfm status)",
       "Bash(git -C /Users/harsh/projects/pfm log --oneline -5)",
-      "Bash(git -C /Users/harsh/projects/pfm commit -m ' *)"
+      "Bash(git -C /Users/harsh/projects/pfm commit -m ' *)",
+      "Bash(git -C /Users/harsh/projects/pfm log main..epic/0-foundation --oneline)"
     ]
   }
 }
