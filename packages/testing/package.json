@@ -1,0 +1,17 @@
+{
+  "name": "@pfm/testing",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@pfm/config": "workspace:*",
+    "@pfm/db": "workspace:*",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}

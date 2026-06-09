@@ -1,0 +1,20 @@
+import { Module } from '@nestjs/common';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
+import { AppController } from './app.controller';
+import { AuthModule } from './auth/auth.module';
+import { MfaModule } from './mfa/mfa.module';
+
+@Module({
+  imports: [
+    // Rate limiting — 100 req/min per IP globally
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    AuthModule,
+    MfaModule,
+  ],
+  controllers: [AppController],
+  providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
+})
+export class AppModule {}
