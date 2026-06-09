@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git checkout *)",
+      "Bash(docker compose *)",
+      "Bash(docker-compose ps *)",
+      "Bash(pnpm --filter @pfm/db exec prisma validate)",
+      "Read(//usr/local/bin/**)",
+      "Read(//opt/homebrew/bin/**)",
+      "Bash(find / -name \"pnpm\" -type f)",
+      "Bash(/opt/homebrew/bin/node --version)",
+      "Bash(/opt/homebrew/bin/node -e \"require\\('child_process'\\).execSync\\('which pnpm', {stdio:'inherit'}\\)\")",
+      "Bash(find /Users/harsh -name \"pnpm\" -type f 2>/dev/null | head -5 && find /opt -name \"pnpm\" -type f 2>/dev/null | head -5)",
+      "Read(//opt/**)",
+      "Bash(docker --version)",
+      "Bash(psql --version)",
+      "Bash(psql -U harsh -c \"CREATE DATABASE pfm_dev;\")",
+      "Bash(psql -U harsh -c \"CREATE DATABASE pfm_test;\")",
+      "Bash(psql -U harsh -d postgres -c \"CREATE DATABASE pfm_dev;\")",
+      "Bash(psql -U harsh -d postgres -c \"CREATE DATABASE pfm_test;\")",
+      "Bash(/opt/homebrew/bin/node -e \"require\\('child_process'\\).execSync\\('corepack enable && corepack prepare pnpm@9.14.4 --activate', {stdio:'inherit'}\\)\")",
+      "Bash(/opt/homebrew/bin/corepack --version)",
+      "Bash(/opt/homebrew/bin/npm install *)",
+      "Bash(/opt/homebrew/bin/pnpm --version)",
+      "Bash(/opt/homebrew/bin/pnpm install *)",
+      "Bash(/opt/homebrew/bin/pnpm --filter @pfm/db migrate:dev --name init)",
+      "Bash(DATABASE_URL=postgresql://harsh@localhost:5432/pfm_dev /opt/homebrew/bin/pnpm --filter @pfm/db migrate:dev --name init)",
+      "Bash(ln -sf /Users/harsh/projects/pfm/.env /Users/harsh/projects/pfm/packages/db/.env)",
+      "Bash(/opt/homebrew/bin/pnpm --filter @pfm/core test)",
+      "Bash(git -C /Users/harsh/projects/pfm status)",
+      "Bash(git -C /Users/harsh/projects/pfm log --oneline -5)",
+      "Bash(git -C /Users/harsh/projects/pfm commit -m ' *)"
+    ]
+  }
+}
