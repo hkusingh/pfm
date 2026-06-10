@@ -79,7 +79,7 @@ footer{margin-top:56px;text-align:center;color:var(--grey);font-size:12px;border
     <div class="tl-head" style="background:var(--p3)">Phase 3 — Expand</div>
 
     <div class="tl-lane-label">Foundation &amp; trust</div>
-    <div class="tl-cell"><span class="bar b1">Household, roles, mandatory MFA, security</span></div>
+    <div class="tl-cell"><span class="bar b1">Invite-only access, household, roles, mandatory MFA, security</span></div>
     <div class="tl-cell"><span class="bar b1 b-soft">Notifications, step-up auth</span></div>
     <div class="tl-cell"><span class="bar b1 b-soft">Audit log, passkeys</span></div>
 
@@ -99,7 +99,7 @@ footer{margin-top:56px;text-align:center;color:var(--grey);font-size:12px;border
     <div class="tl-cell"><span class="bar b1 b-soft">Investment &amp; planning reports</span></div>
 
     <div class="tl-lane-label">AI</div>
-    <div class="tl-cell"><span class="bar bai b-soft">Categorization, recurring detection</span></div>
+    <div class="tl-cell"><span class="bar bai b-soft">BYOK categorization (optional), recurring detection</span></div>
     <div class="tl-cell"><span class="bar bai">AI platform + descriptive, predictive &amp; coaching insights</span></div>
     <div class="tl-cell"><span class="bar bai">Conversational agent, household intelligence</span></div>
 
@@ -120,6 +120,7 @@ footer{margin-top:56px;text-align:center;color:var(--grey);font-size:12px;border
     <div class="block">
       <h4>Core scope</h4>
       <ul>
+        <li><b>Invitation-only access</b> (site-admin invites) + site-admin area</li>
         <li>Household, invites, configurable co-owner/member roles</li>
         <li>Mandatory MFA (Google Authenticator + email), encryption, privacy controls</li>
         <li><b>Document/statement upload (CSV/OFX/QFX) + manual accounts</b> (no live aggregation)</li>
@@ -128,12 +129,12 @@ footer{margin-top:56px;text-align:center;color:var(--grey);font-size:12px;border
         <li>Spending dashboard + default charts; recategorize &amp; rules</li>
         <li>Responsive web app</li>
       </ul>
-      <p style="font-size:12.5px;color:#5b6675;margin-top:6px;"><i>Phase 1 is a limited-user test release; Plaid aggregation is deferred to Phase 2.</i></p>
+      <p style="font-size:12.5px;color:#5b6675;margin-top:6px;"><i>Phase 1 is a limited-user, invitation-only test release; Plaid aggregation is deferred to Phase 2. Develops local-first; hosts on serverless (GCP Cloud Run + Neon) when testers onboard.</i></p>
     </div>
     <div class="block">
       <div class="aiblock">
         <h4>AI in this phase</h4>
-        Foundational, behind the scenes: <b>smart categorization</b> and <b>recurring/annual detection</b> on imported data (feeds sinking funds). No conversational surface yet — this is where the enriched data that powers Phase 2 gets created.
+        <b>Optional, BYOK</b> (bring-your-own-key): a household can supply its own Claude / OpenAI / Gemini key to get <b>AI-suggested categories</b> on imported data — always optional, consent-gated, and never required (falls back to rules). Plus foundational recurring/annual detection feeding sinking funds. No conversational surface yet; the full AI insights platform is Phase 2.
       </div>
       <h4 style="margin-top:12px;">Dependencies</h4>
       <ul><li>Backend, data store, auth/MFA in place</li><li>Statement parsing for common bank formats</li></ul>
@@ -221,8 +222,10 @@ footer{margin-top:56px;text-align:center;color:var(--grey);font-size:12px;border
 <h2>4. Key Assumptions &amp; Risks</h2>
 <ul>
   <li><b>Plaid deferred to Phase 2</b> (confirmed). Phase 1 is a limited-user test via document upload + manual entry; build data structures to accept a Plaid source later.</li>
-  <li><b>AI data privacy</b> rests on a no-retention provider agreement; revisit before scaling.</li>
-  <li><b>Cost management</b>: route cheap tasks to small models; AI usage and aggregator fees scale with users.</li>
+  <li><b>AI data privacy</b> rests on a no-retention provider agreement; revisit before scaling. <b>Phase 1 BYOK</b>: data is sent to the user's own provider under the user's terms — still gated by explicit consent and minimized to the merchant string + amount.</li>
+  <li><b>Cost management</b>: Phase 1 BYOK offloads token cost to the user during the test; cache confirmed categorizations as merchant rules to avoid repeat LLM calls. Later, route cheap tasks to small models; AI and aggregator fees scale with users.</li>
+  <li><b>Access ramp</b>: invitation-only → household-invites-household beta → general availability, as a policy toggle (not a rebuild).</li>
+  <li><b>Local-first / cost</b>: validate locally before paying for infra; serverless (Cloud Run + Neon) idles near-zero; keep the app container-portable so the cloud choice stays reversible.</li>
   <li><b>Scope discipline</b>: conversational AI and external channels are deliberately Phase 3 — resist pulling them earlier before the data and platform are solid.</li>
 </ul>
 

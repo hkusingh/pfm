@@ -28,6 +28,17 @@ export class EmailService {
     });
   }
 
+  async sendPasswordReset(to: string, resetUrl: string): Promise<void> {
+    await this.send({
+      to,
+      subject: 'Reset your password',
+      text: `Click the link to reset your password:\n\n${resetUrl}\n\nThis link expires in 1 hour. If you didn't request this, you can ignore this email.`,
+      html: `<p>Click the link below to reset your password:</p>
+             <p><a href="${resetUrl}">${resetUrl}</a></p>
+             <p>This link expires in 1 hour. If you didn't request this, you can ignore this email.</p>`,
+    });
+  }
+
   async sendMfaCode(to: string, code: string): Promise<void> {
     await this.send({
       to,

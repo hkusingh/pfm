@@ -62,6 +62,28 @@ export class TokenService {
     return this.issueTokenPair(user.id, user.email, true);
   }
 
+  // Short-lived (1-hour) password reset token. Embeds a fingerprint of the
+  // current password hash so the token is invalidated once the password changes.
+  async issuePasswordResetToken(userId: string, passwordHash: string): Promise<string> {
+    const fingerprint = createHash('sha256').update(passwordHash).digest('hex').slice(0, 16);
+    return new SignJWT({ sub: userId, purpose: 'password_reset', fp: fingerprint })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(accessSecret());
+  }
+
+  async verifyPasswordResetToken(token: string): Promise<{ userId: string; fingerprint: string }> {
+    try {
+      const { payload } = await jwtVerify(token, accessSecret());
+      const p = payload as Record<string, unknown>;
+      if (p.purpose !== 'password_reset') throw new Error();
+      return { userId: payload.sub as string, fingerprint: p.fp as string };
+    } catch {
+      throw new UnauthorizedException('Password reset link is invalid or has expired');
+    }
+  }
+
   // Short-lived (5-min) token used only to carry the MFA challenge step
   async issueMfaChallengeToken(userId: string): Promise<string> {
     return new SignJWT({ sub: userId, purpose: 'mfa_challenge' })

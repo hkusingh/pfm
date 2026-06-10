@@ -281,8 +281,11 @@ table.tx td{padding:9px 10px;border-bottom:1px solid var(--line);}
                 <tr><td>Amount</td><td><select class="vis-select"><option>Amount ✓</option></select></td><td class="muted">-6.80</td></tr>
               </tbody>
             </table>
-            <div class="field" style="margin-top:12px;"><label>Import into account</label><select><option>Amex Platinum ····1009</option><option>+ New manual account…</option></select></div>
-            <div class="note" style="margin-top:6px;">Duplicate transactions already on file are detected and skipped automatically.</div>
+            <div class="row r2" style="gap:12px;margin-top:12px;">
+              <div class="field" style="margin-bottom:0;"><label>Import into account</label><select><option>Amex Platinum ····1009</option><option>+ New manual account…</option></select></div>
+              <div class="field" style="margin-bottom:0;"><label>Account currency</label><select><option>USD ($)</option><option>EUR (€)</option><option>GBP (£)</option><option>INR (₹)</option></select></div>
+            </div>
+            <div class="note" style="margin-top:6px;">Duplicate transactions already on file are detected and skipped automatically. Each account has its own currency; amounts are shown as-is and not converted.</div>
             <div style="margin-top:12px;display:flex;gap:8px;"><button class="btn sm">Import 42 transactions</button><button class="btn ghost sm">Cancel</button></div>
           </div>
           <div class="card" style="margin-top:16px;">
@@ -290,6 +293,7 @@ table.tx td{padding:9px 10px;border-bottom:1px solid var(--line);}
             <div class="acct"><div class="l"><span class="bankico"></span><div><div>Chase Checking</div><div class="muted">····4821 · $8,420</div></div></div><div><select class="vis-select"><option>Shared ✓</option><option>Private</option><option>Balance-only</option></select></div></div>
             <div class="acct"><div class="l"><span class="bankico"></span><div><div>Amex Platinum</div><div class="muted">····1009 · −$1,240</div></div></div><div><select class="vis-select"><option>Shared ✓</option><option>Private</option><option>Balance-only</option></select></div></div>
             <div class="acct"><div class="l"><span class="bankico"></span><div><div>Personal Savings</div><div class="muted">····7733 · $22,500</div></div></div><div><select class="vis-select"><option>Private ✓</option><option>Shared</option><option>Balance-only</option></select></div></div>
+            <div class="acct" style="border-bottom:0;"><div class="l"><span class="bankico" style="background:linear-gradient(135deg,#B9770E,#1F4E79)"></span><div><div>HDFC Savings <span class="tag t-balance">INR</span></div><div class="muted">····3321 · ₹4,20,000 · shown natively, not in USD totals</div></div></div><div><select class="vis-select"><option>Shared ✓</option><option>Private</option><option>Balance-only</option></select></div></div>
           </div>
           <div class="card" style="margin-top:16px;">
             <div class="ctitle">Shared with you <span class="link">from household</span></div>
@@ -297,6 +301,7 @@ table.tx td{padding:9px 10px;border-bottom:1px solid var(--line);}
             <div class="acct"><div class="l"><span class="bankico"></span><div><div>Arjun&rsquo;s Salary <span class="tag t-balance">Balance-only</span></div><div class="muted">Counts toward totals · items hidden</div></div></div><span class="muted">view only</span></div>
           </div>
           <div class="note"><b>Visibility:</b> you can only set sharing on your own accounts. <span class="tag t-shared">Shared</span> shows transactions to the household, <span class="tag t-private">Private</span> hides everything, <span class="tag t-balance">Balance-only</span> counts the balance in totals but hides line items.</div>
+          <div class="note" style="margin-top:8px;"><b>Currency:</b> each account keeps its own currency (USD / EUR / GBP / INR). Amounts are never converted in Phase 1 — non-base-currency accounts appear natively and in a separate per-currency breakdown rather than being blended into the base-currency totals.</div>
         </div>
       </div>
     </div>
@@ -514,6 +519,30 @@ table.tx td{padding:9px 10px;border-bottom:1px solid var(--line);}
             <canvas id="rMain" style="max-height:260px;"></canvas>
           </div>
 
+          <!-- period comparison report -->
+          <div class="card" style="margin-top:16px;">
+            <div class="ctitle">Period comparison — spending by category
+              <span class="seg" style="border-radius:6px;"><button class="on" style="padding:4px 10px;font-size:12px;">Month vs month</button><button style="padding:4px 10px;font-size:12px;">Quarter vs quarter</button><button style="padding:4px 10px;font-size:12px;">Year vs year</button></span>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:4px 0 12px;">
+              <select class="vis-select"><option>Jun 2026</option><option>May 2026</option><option>Apr 2026</option></select>
+              <span class="muted" style="font-size:12px;">compared with</span>
+              <select class="vis-select"><option>May 2026</option><option>Jun 2025 (same month last year)</option><option>Apr 2026</option></select>
+            </div>
+            <table class="tx">
+              <thead><tr><th>Category</th><th style="text-align:right;">Jun 2026</th><th style="text-align:right;">May 2026</th><th style="text-align:right;">Change</th></tr></thead>
+              <tbody>
+                <tr><td>Housing</td><td style="text-align:right;">$2,400</td><td style="text-align:right;">$2,400</td><td style="text-align:right;color:var(--grey);">—</td></tr>
+                <tr><td>Food &amp; dining</td><td style="text-align:right;">$1,180</td><td style="text-align:right;">$960</td><td style="text-align:right;color:#c0392b;">▲ $220 · +23%</td></tr>
+                <tr><td>Transport</td><td style="text-align:right;">$310</td><td style="text-align:right;">$540</td><td style="text-align:right;color:#1F8A4C;">▼ $230 · −43%</td></tr>
+                <tr><td>Shopping</td><td style="text-align:right;">$640</td><td style="text-align:right;">$420</td><td style="text-align:right;color:#c0392b;">▲ $220 · +52%</td></tr>
+                <tr><td>Utilities</td><td style="text-align:right;">$190</td><td style="text-align:right;">$205</td><td style="text-align:right;color:#1F8A4C;">▼ $15 · −7%</td></tr>
+                <tr><td><b>Total</b></td><td style="text-align:right;"><b>$4,720</b></td><td style="text-align:right;"><b>$4,525</b></td><td style="text-align:right;color:#c0392b;"><b>▲ $195 · +4%</b></td></tr>
+              </tbody>
+            </table>
+            <div class="note" style="margin-top:8px;">Compare any two periods at month, quarter, or year granularity. Visibility- and currency-aware: base-currency accounts only; expand a category to see its sub-categories. ★ save to dashboard.</div>
+          </div>
+
           <!-- report gallery -->
           <div class="topbar" style="margin:18px 0 6px;"><h2 style="font-size:16px;">Report library</h2><span class="muted" style="font-size:12px;">click to open · ★ save to dashboard</span></div>
           <div class="row r3">
@@ -639,7 +668,8 @@ table.tx td{padding:9px 10px;border-bottom:1px solid var(--line);}
               <div class="ctitle">Profile</div>
               <div class="field"><label>Full name</label><input value="Priya Sharma"></div>
               <div class="field"><label>Email</label><input value="priya@email.com"></div>
-              <div class="muted" style="margin-bottom:10px;">Changing your email requires re-verification.</div>
+              <div class="field"><label>Date of birth <span class="muted">(optional)</span></label><input type="date" value="1987-09-12"></div>
+              <div class="muted" style="margin-bottom:10px;">Changing your email requires re-verification. Date of birth is optional.</div>
               <button class="btn sm">Save profile</button>
             </div>
             <div class="card">
@@ -660,11 +690,87 @@ table.tx td{padding:9px 10px;border-bottom:1px solid var(--line);}
             </div>
             <div class="card">
               <div class="ctitle">Preferences &amp; data</div>
-              <div class="field"><label>Base currency</label><select><option>USD ($)</option><option>EUR (€)</option><option>GBP (£)</option></select></div>
+              <div class="field"><label>Base currency</label><select><option>USD ($)</option><option>EUR (€)</option><option>GBP (£)</option><option>INR (₹)</option></select></div>
               <div class="field"><label>Month starts on</label><select><option>1st</option><option>Payday</option></select></div>
               <div style="display:flex;gap:8px;margin-top:6px;"><button class="btn ghost sm">Export my data</button><button class="btn ghost sm" style="color:var(--p0);border-color:var(--p0);">Delete account</button></div>
             </div>
           </div>
+          <div class="row" style="margin-top:16px;">
+            <div class="card">
+              <div class="ctitle">AI categorization <span class="muted" style="font-weight:400;">(optional · bring your own key)</span></div>
+              <div class="muted" style="margin-bottom:10px;">Add your household&rsquo;s own AI provider key to get suggested categories on imported transactions. Optional — the app works fully without it. Owner-managed.</div>
+              <div class="row r2">
+                <div class="field"><label>Provider</label><select><option>Anthropic — Claude</option><option>OpenAI</option><option>Google — Gemini</option></select></div>
+                <div class="field"><label>API key</label><input type="password" placeholder="sk-…"></div>
+              </div>
+              <div class="acct" style="border-bottom:0;"><div class="l"><span class="bankico" style="background:linear-gradient(135deg,#B9770E,#1F4E79)"></span><div><div>Claude key <span class="tag t-balance">Active</span></div><div class="muted">•••• 4f2a · validated Jun 8 · added by Priya</div></div></div><div style="display:flex;gap:8px;"><button class="btn ghost sm">Test</button><button class="btn ghost sm">Replace</button><button class="btn ghost sm" style="color:var(--p0);border-color:var(--p0);">Remove</button></div></div>
+              <label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:13px;"><input type="checkbox" checked style="margin-top:3px;"><span>I consent to sending transaction details (<b>merchant name and amount only</b>) to the selected provider for categorization. No account numbers or member identities are shared. Revocable anytime.</span></label>
+              <div style="margin-top:12px;"><button class="btn sm">Save AI settings</button></div>
+              <div class="note" style="margin-top:12px;">Your key is encrypted and never shown again after saving. Confirmed categories become rules, so the same merchant isn&rsquo;t sent to the AI twice.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 11. ADMIN · INVITATIONS (site-admin) ============ -->
+  <section class="screen" data-name="11 · Admin · invitations">
+    <p class="scaption">Site-admin only (Epic 8). Phase 1 is invitation-only: issue / track signup invites and set the registration policy. This is platform access — distinct from household member invites (screen 7).</p>
+    <div class="frame">
+      <div class="bar"><span class="dot" style="background:#ec6a5e"></span><span class="dot" style="background:#f4bf4f"></span><span class="dot" style="background:#61c554"></span><span class="url">app.pfm.com/admin/invitations</span></div>
+      <div style="background:var(--soft);padding:10px;">
+        <div style="background:#fff;border-radius:10px;padding:16px;">
+          <div class="topbar"><h2>Admin · Invitations</h2><span class="tag t-balance">Site admin</span></div>
+          <div class="note" style="margin:6px 0 14px;"><b>Phase 1 is invitation-only.</b> Only people invited here can create an account. Beta (households invite households) and open signup are later policy switches — not new screens.</div>
+          <div class="card">
+            <div class="ctitle">Registration policy</div>
+            <div class="seg" style="margin-top:4px;"><button class="on">Admin invite</button><button>Beta · households invite</button><button>Open signup</button></div>
+            <div class="muted" style="margin-top:8px;">Current: <b>admin invite</b> — account creation requires a valid invitation (enforced server-side).</div>
+          </div>
+          <div class="card" style="margin-top:14px;">
+            <div class="ctitle">Invite someone to the platform</div>
+            <div class="row r2" style="gap:12px;align-items:flex-end;">
+              <div class="field" style="margin-bottom:0;"><label>Email</label><input placeholder="name@email.com"></div>
+              <div class="field" style="margin-bottom:0;"><button class="btn sm" style="width:100%;">Send invitation</button></div>
+            </div>
+          </div>
+          <div class="card" style="margin-top:14px;">
+            <div class="ctitle">Invitations <span class="muted" style="font-weight:400;">4 total</span></div>
+            <table class="tx">
+              <thead><tr><th>Email</th><th>Invited</th><th>Status</th><th style="text-align:right;">Action</th></tr></thead>
+              <tbody>
+                <tr><td>arjun@email.com</td><td class="muted">Jun 4</td><td><span class="tag t-shared">Accepted</span></td><td style="text-align:right;" class="muted">—</td></tr>
+                <tr><td>sam@email.com</td><td class="muted">Jun 6</td><td><span class="tag t-balance">Pending</span></td><td style="text-align:right;"><button class="btn ghost sm">Resend</button> <button class="btn ghost sm" style="color:var(--p0);border-color:var(--p0);">Revoke</button></td></tr>
+                <tr><td>neha@email.com</td><td class="muted">Jun 7</td><td><span class="tag t-balance">Pending</span></td><td style="text-align:right;"><button class="btn ghost sm">Resend</button> <button class="btn ghost sm" style="color:var(--p0);border-color:var(--p0);">Revoke</button></td></tr>
+                <tr><td>old@email.com</td><td class="muted">May 28</td><td><span class="tag t-private">Expired</span></td><td style="text-align:right;"><button class="btn ghost sm">Resend</button></td></tr>
+              </tbody>
+            </table>
+            <div class="note" style="margin-top:8px;">Admin area requires site-admin + MFA. Invitations are unique &amp; expiring; resend or revoke anytime.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 12. INVITED SIGNUP ============ -->
+  <section class="screen" data-name="12 · Invited signup">
+    <p class="scaption">Invited-signup entry (Epic 8). Someone with a valid invitation creates their own account &amp; household; uninvited visitors can&rsquo;t sign up during the limited test.</p>
+    <div class="frame">
+      <div class="bar"><span class="dot" style="background:#ec6a5e"></span><span class="dot" style="background:#f4bf4f"></span><span class="dot" style="background:#61c554"></span><span class="url">app.pfm.com/signup?invite=…</span></div>
+      <div style="background:var(--soft);padding:10px;">
+        <div class="card center-card">
+          <div class="brand" style="color:var(--blue);justify-content:center;padding-bottom:14px;"><span class="logo"></span> PFM</div>
+          <div class="note" style="margin-bottom:12px;text-align:center;">You&rsquo;ve been invited to PFM · invitation for <b>sam@email.com</b></div>
+          <div class="steps"><i class="on"></i><i></i><i></i><i></i></div>
+          <h3 style="text-align:center;margin:0 0 4px;">Create your account</h3>
+          <p class="muted" style="text-align:center;margin-top:0;">Set up your own login — your finances stay yours.</p>
+          <div class="field"><label>Your name</label><input placeholder="Sam Rao"></div>
+          <div class="field"><label>Email</label><input value="sam@email.com" disabled style="opacity:.7;"></div>
+          <div class="field"><label>Password</label><input type="password" placeholder="••••••••"></div>
+          <div class="field"><label>Household name</label><input placeholder="Rao Household"></div>
+          <button class="btn" style="width:100%;">Create account</button>
+          <p class="muted" style="text-align:center;margin:12px 0 2px;">Next: verify email → set up MFA. Sign-up is invite-only during our limited test.</p>
         </div>
       </div>
     </div>

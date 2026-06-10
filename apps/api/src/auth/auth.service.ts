@@ -125,6 +125,42 @@ export class AuthService {
     return { ...user, mfaMethods: mfaMethods.map((m) => ({ ...m, type: m.type as string })) };
   }
 
+  async forgotPassword(email: string): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { email } });
+    // Always respond the same way — don't reveal whether the email exists
+    if (!user) return;
+
+    const token = await this.tokens.issuePasswordResetToken(user.id, user.passwordHash);
+    const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
+    await this.email.sendPasswordReset(user.email, `${webOrigin}/reset-password?token=${token}`);
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const { userId, fingerprint } = await this.tokens.verifyPasswordResetToken(token);
+
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+
+    // Check the fingerprint still matches — ensures one-time use after password change
+    const { createHash } = await import('crypto');
+    const currentFingerprint = createHash('sha256')
+      .update(user.passwordHash)
+      .digest('hex')
+      .slice(0, 16);
+    if (currentFingerprint !== fingerprint) {
+      throw new UnauthorizedException('Password reset link has already been used');
+    }
+
+    const passwordHash = await argon2.hash(newPassword);
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: userId }, data: { passwordHash } });
+      // Revoke all sessions so any stolen tokens are invalidated
+      await tx.session.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    });
+  }
+
   // Used by the global JWT guard to look up the current user
   async validateUser(userId: string) {
     return prisma.user.findUnique({

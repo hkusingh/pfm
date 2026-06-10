@@ -45,12 +45,12 @@ flowchart TD
 
 | Wave | Epics (parallel) | Notes |
 |---|---|---|
-| **Wave 1** | Epic 0 | Foundation — everyone depends on it; land first. |
-| **Wave 2** | Epic 1, Epic 2, Epic 4 | Independent feature areas on the kernel. |
-| **Wave 3** | Epic 3, Epic 5, Epic 6 | Build on accounts/categories; stub where needed. **Epic 3 (document upload) is the Phase 1 data path** — treat as high priority. |
+| **Wave 1** | Epic 0 ✅ *(done)* | Foundation — everyone depends on it; land first. |
+| **Wave 2** | Epic 1, Epic 2, Epic 4, **Epic 8** | Independent feature areas on the kernel. **Epic 8 (invitation-only access) gates signup — start early.** |
+| **Wave 3** | Epic 3, Epic 5, Epic 6, **Epic 9** | Build on accounts/categories; stub where needed. **Epic 3 (document upload) is the Phase 1 data path** — treat as high priority. |
 | **Wave 4** | Epic 7 | Integrates transactions + budgets; lands last. |
 
-> **Phase 1 scope note:** Phase 1 is a **limited-user test release**. Data enters via **document/statement upload (Epic 3) and manual entry (Epic 2) only**. **Plaid live aggregation is deferred to Phase 2** — its stories are listed under Epic 2 as Phase 2 for forward planning, not Phase 1 work.
+> **Phase 1 scope note:** Phase 1 is a **limited-user test release** and is **invitation-only** (Epic 8). Data enters via **document/statement upload (Epic 3) and manual entry (Epic 2) only**. **Plaid live aggregation is deferred to Phase 2** — its stories are listed under Epic 2 as Phase 2 for forward planning, not Phase 1 work. A thin **BYOK AI categorization** slice (Epic 9) is included in Phase 1: households may supply their own LLM provider key; AI is always optional. The broader AI insights platform remains Phase 2.
 
 ### 1.3 Working agreements (parallel + merge)
 
@@ -76,9 +76,10 @@ flowchart TD
   - AC: CI runs lint + tests on PR; main protected; preview/staging deploy configured.
 - **E0.2 — Data model & migrations.** *(PRD: Tech Design §2 · Size: L)*
   - AC: Tables for user, household, membership, account, transaction, category, budget, sinking_fund, category_rule, mfa_method per the ER model.
+  - AC: `user` has `name` (required) + optional `date_of_birth` / `locale` / `timezone`; `membership` has `role` + `is_primary_owner`; `account` has its own `currency`; `household` has `base_currency` ∈ {USD, EUR, GBP, INR}.
   - AC: Account scoped to `household_id` + `owner_user_id`; category self-referential; `dedup_hash` on transaction; nullable `tag` field reserved for Phase 2.
 - **E0.3 — Authentication.** *(PRD: S-1, S-3 · Size: M)*
-  - AC: Email/password signup, password hashing, email verification, login, session/token issuance + expiry/refresh.
+  - AC: Email/password/**name** signup, password hashing, email verification, login, session/token issuance + expiry/refresh. (DoB is an optional profile field, not collected at signup.)
 - **E0.4 — Mandatory MFA.** *(PRD: S-2 · Size: L)*
   - AC: TOTP (Google Authenticator) and email-code methods; primary + backup; recovery codes generated once.
   - AC: MFA enrollment enforced during onboarding before app access; cannot be disabled (method changeable).
@@ -99,15 +100,15 @@ flowchart TD
 **Goal:** households can be created and shared with configurable roles. **Depends on:** E0. **Parallel with:** Epics 2, 4.
 
 - **E1.1 — Create household on signup.** *(PRD: H-1 · Size: S)*
-  - AC: First user becomes Owner; household has name, base currency, month-start.
+  - AC: First user becomes the primary Owner (`role:owner` + `is_primary_owner`); household has name, base currency (USD/EUR/GBP/INR), month-start.
 - **E1.2 — Invite member with role.** *(PRD: H-2, H-4 · Size: M)*
   - AC: Invite by email with role (co-owner / member); unique expiring link; pending invites listed; resend/revoke.
 - **E1.3 — Accept invite & join.** *(PRD: H-3 · Size: M)*
   - AC: Invitee creates own login (+ MFA via E0.4), joins household, sees shared view per permissions.
   - AC: Email already registered → link to this household after confirmation (one active household per user in Phase 1).
 - **E1.4 — Manage roles & remove member.** *(PRD: H-4, H-5 · Size: M)*
-  - AC: Owner/co-owner changes a member's role; removes a member (access revoked immediately; their accounts detached not deleted).
-  - AC: Cannot remove/demote the last owner.
+  - AC: Owner/co-owner changes a member's role (owner↔member; "co-owner" = `role:owner`, non-primary); removes a member (access revoked immediately; their accounts detached not deleted).
+  - AC: Cannot remove/demote the primary owner while they are the sole owner.
 - **E1.5 — Household settings.** *(PRD: H-1 · Size: S)*
   - AC: Edit household name, currency, month-start; member list shows roles and last login.
 
@@ -119,7 +120,7 @@ flowchart TD
 **Phase 1 scope.** Plaid live aggregation is **Phase 2** (stories listed at the end for forward planning).
 
 - **E2.1 — Account model.** *(PRD: A-1, A-2 · Size: M)*
-  - AC: Account entity scoped to household + owner; supports sources `manual` and `import` (Plaid source added in Phase 2); balance, institution, mask fields.
+  - AC: Account entity scoped to household + owner; supports sources `manual` and `import` (Plaid source added in Phase 2); balance, institution, mask fields; **per-account `currency`** (USD/EUR/GBP/INR, defaults to household base; no FX conversion).
 - **E2.2 — Manual account & transactions.** *(PRD: A-2 · Size: M)*
   - AC: Add a manual cash/unsupported account; add/edit transactions by hand.
 - **E2.3 — Per-account visibility.** *(PRD: A-3 · Size: M)*
@@ -209,11 +210,42 @@ flowchart TD
 - **E7.1 — Dashboard KPIs & view toggle.** *(PRD: D-1, D-2 · Size: M)*
   - AC: KPIs (income, spending, budget remaining); budget vs. actual; household/personal toggle (personal = own accounts only; household respects visibility).
 - **E7.2 — Default charts.** *(PRD: D-3 · Size: M)*
-  - AC: Spending by category, spending over time (**6-month default**, 3M/6M toggle), income vs. expenses, budget vs. actual; interactive (hover amounts); visibility-aware; show actuals.
+  - AC: Spending by category, spending over time (**6-month default**, 3M/6M toggle), income vs. expenses, budget vs. actual; interactive (hover amounts); visibility-aware; show actuals; **currency-aware** (base-currency roll-ups only; non-base accounts in a separate per-currency breakdown, never blended/converted).
 - **E7.3 — Reserve-funded marking on spending-over-time.** *(PRD: B-6 · Size: S)*
   - AC: In the Actual view, the reserve-funded portion of a month is a distinct, labeled segment so the spike is self-explaining.
+- **E7.4 — Period comparison report.** *(PRD: D-5 · Size: M)*
+  - AC: Compare spending by category across two periods with selectable granularity (month/quarter/year over the prior or year-ago period); show per-category totals + absolute/% change + total row; categories expand to sub-categories; visibility- and currency-aware; savable to dashboard.
 
-> Custom chart builder, net worth charts, and rental cash-flow report are **Phase 2**.
+> Custom chart builder, net worth charts, and rental cash-flow report are **Phase 2**. The period-comparison report (E7.4) is a fixed report, not the custom builder.
+
+---
+
+## 9a. Epic 8 — Platform Access & Site Admin  *(added 2026-06-10)*
+
+**Goal:** Phase 1 is **invitation-only** — only people the site admin invites can create an account. Built as a policy toggle that later opens to a household-invites-household **beta**, then **general availability**. **This is platform-level access, distinct from the household *member* invites in Epic 1.** **Depends on:** E0. **Parallel with:** Epics 1, 2, 4 (Wave 2). **Start early — it gates signup.**
+
+- **E8.1 — Registration policy & gated signup.** *(PRD: S-6 · Size: M)*
+  - AC: Global `RegistrationPolicy.mode` (`admin_invite` | `beta_invite` | `open`); Phase 1 default `admin_invite`.
+  - AC: In `admin_invite`, the signup endpoint requires a valid, unexpired `SignupInvite` for that email, consumed on success; enforced **server-side**; rate-limited. No invite → no account.
+- **E8.2 — Site-admin role & bootstrap.** *(Size: S)*
+  - AC: `User.isSiteAdmin`; admin-only guard; **first site admin seeded** (`hksingh@gmail.com`) via migration/seed (no admin exists to invite the first one).
+- **E8.3 — Admin area (guarded `/admin`, not a separate app).** *(Size: M)*
+  - AC: Site-admin-only routes + API to issue / list / resend / revoke `SignupInvite`s, view pending vs. accepted, basic user list. Requires site-admin **and** MFA; intended behind IAP/IP-allowlist when hosted.
+- **E8.4 — Beta & GA policy switches (forward-built).** *(Size: S)*
+  - AC: `beta_invite` lets an existing household issue signup-invites with a per-household quota (`issuedByHouseholdId`), reusing the `SignupInvite` flow; `open` requires no invite. Phase 1 ships the toggle + `admin_invite` path; beta/GA are config flips.
+
+## 9b. Epic 9 — BYOK AI Categorization  *(added 2026-06-10)*
+
+**Goal:** let a household supply **their own** AI provider key (Claude / OpenAI / Gemini) and use that LLM to interpret/categorize expenses. **Always optional and feature-flagged** — the app works fully with no key (falls back to rules/uncategorized). **Depends on:** E2, E4. **Parallel with:** Epics 3, 5, 6 (Wave 3). The broader AI insights platform stays **Phase 2**.
+
+- **E9.1 — Provider-agnostic LLM layer.** *(PRD: AI-1 · Size: M)*
+  - AC: `@pfm/ai` exposes an `LlmProvider` interface (`categorizeTransaction`, `interpretExpense`) with Anthropic / OpenAI / Google adapters; no provider SDK leaks past the interface.
+- **E9.2 — BYOK credential management.** *(PRD: AI-2 · Size: M)*
+  - AC: Key stored with **KMS envelope encryption** (ciphertext only), validated on save, **write-only** (surface provider + last-4 + status), rotate/revoke; **per-household**, set by an owner, records who added it. Never logged or returned.
+- **E9.3 — Consent & data minimization.** *(PRD: AI-3, NFR-3 · Size: S)*
+  - AC: Explicit, revocable consent required before any data leaves the system; send only the normalized merchant (+ amount) — never account numbers, masks, or member identity; provider disclosed in consent copy.
+- **E9.4 — Categorization integration & rule caching.** *(PRD: AI-1 · Size: M)*
+  - AC: On import (extends E3.4) and as a "suggest category" action (extends E4.6/E5.2), the user's LLM suggests a category; user confirms. On confirm, write a `CategoryRule` so the same merchant is never sent twice. Graceful fallback on missing key / provider error.
 
 ---
 

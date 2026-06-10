@@ -5,6 +5,11 @@ The product/requirements source of truth lives in [`/docs`](./docs); the build p
 [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md). When code and docs disagree, the docs win —
 raise the conflict rather than silently diverging.
 
+> **Current status (2026-06-10):** Epic 0 (Foundation) is **done**. Next up is Wave 2 — **Epic 1,
+> Epic 2, Epic 4, and the new Epic 8 (Platform Access & Site Admin)** in parallel. See the
+> **"Status & Next Up"** section at the top of `IMPLEMENTATION_PLAN.md` for the ordered work list.
+> **Deployment is local-first — do not stand up a hosted environment yet** (IMPLEMENTATION_PLAN §5.2).
+
 ---
 
 ## 1. What we are building
@@ -35,6 +40,14 @@ These are correctness and safety rules. A change that violates one is wrong even
    audit record.
 6. **Money math is integer-safe.** Store and compute monetary amounts in **minor units (integer
    cents)** with an explicit currency. Never use floats for money.
+7. **Signup is invitation-only.** Phase 1 runs `RegistrationPolicy = admin_invite`: no account is
+   created without a valid `SignupInvite`, enforced **server-side** at the signup endpoint (not just
+   hidden in UI). Site-admin endpoints require `isSiteAdmin` + MFA. (Epic 8.)
+8. **AI is optional and BYOK.** AI uses the household's **own** provider key; the app must work fully
+   with no key (fall back to rules/uncategorized). Never store a key in plaintext (KMS envelope
+   encryption), never return or log it, never send transaction data to a provider without recorded
+   consent, and send only the normalized merchant (+ amount) — never account numbers or identities.
+   (Epic 9.)
 
 If a task seems to require breaking one of these, stop and flag it.
 
@@ -126,8 +139,9 @@ dev`.
   account/transaction data add a visibility leakage test. Don't mark a task done with failing tests or
   a partial implementation.
 - **No brand name in code.** The product name is undecided. Use the working name `pfm`/`@pfm/*` only.
-  The user-facing app title comes from a single `APP_NAME` constant (env-sourced, in `packages/config`);
-  never hardcode a product/brand name in UI copy, page titles, emails, or package names.
+  The user-facing app title comes from a single `APP_NAME` constant in `packages/config` (sourced from
+  the `PUBLIC_APP_NAME` env var); never hardcode a product/brand name in UI copy, page titles, emails,
+  or package names.
 
 ## 7. Branching (see CONTRIBUTING.md)
 
@@ -140,10 +154,16 @@ pass and at least one review is required.
 
 ## 8. Build order (summary)
 
-Wave 0/1 is **Epic 0 — Foundation**: scaffolding, data model, auth, MFA, the visibility helper, the
-design system, API conventions. **It must merge before anything else.** Then feature epics proceed in
-parallel waves. Full breakdown in [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md) and
-[`docs/phase1-epics-and-stories.md`](./docs/phase1-epics-and-stories.md).
+Epic 0 — Foundation is **complete**. Current waves:
+
+- **Wave 2 (now):** Epic 1 (Household), Epic 2 (Accounts), Epic 4 (Categories), **Epic 8 (Platform
+  Access & Site Admin — invitation-only signup; start early, it gates Epic 1's signup).**
+- **Wave 3:** Epic 3 (Import — high priority), Epic 5 (Transactions), Epic 6 (Budgets), **Epic 9 (BYOK
+  AI categorization).**
+- **Wave 4:** Epic 7 (Dashboard).
+
+Full breakdown + the ordered next-up list in [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md)
+("Status & Next Up" section) and [`docs/phase1-epics-and-stories.md`](./docs/phase1-epics-and-stories.md).
 
 ## 9. Source-of-truth docs
 

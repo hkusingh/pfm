@@ -48,7 +48,7 @@ export class MfaService {
 
   // ─── TOTP setup ─────────────────────────────────────────────────────────────
 
-  async initTotpSetup(userId: string): Promise<{ otpauthUrl: string; qrCodeDataUrl: string; recoveryCodes: string[] }> {
+  async initTotpSetup(userId: string): Promise<{ secret: string; otpauthUrl: string; qrDataUrl: string }> {
     const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
 
     const secret = authenticator.generateSecret();
@@ -66,18 +66,11 @@ export class MfaService {
       update: { secret: encrypt(secret) },
     });
 
-    const qrCodeDataUrl = await qrcode.toDataURL(otpauthUrl);
-    const { plain: recoveryCodes, hashed } = AuthService.generateRecoveryCodes();
-
-    await prisma.recoveryCode.deleteMany({ where: { userId } });
-    await prisma.recoveryCode.createMany({
-      data: hashed.map((codeHash) => ({ userId, codeHash })),
-    });
-
-    return { otpauthUrl, qrCodeDataUrl, recoveryCodes };
+    const qrDataUrl = await qrcode.toDataURL(otpauthUrl);
+    return { secret, otpauthUrl, qrDataUrl };
   }
 
-  async confirmTotpSetup(userId: string, code: string): Promise<void> {
+  async confirmTotpSetup(userId: string, code: string): Promise<{ recoveryCodes: string[] }> {
     const pending = await prisma.mfaMethod.findUnique({
       where: { id: `${userId}_totp_pending` },
     });
@@ -88,12 +81,20 @@ export class MfaService {
       throw new BadRequestException('Invalid TOTP code');
     }
 
-    await prisma.$transaction([
-      prisma.mfaMethod.update({
+    const { plain: recoveryCodes, hashed } = AuthService.generateRecoveryCodes();
+
+    await prisma.$transaction(async (tx) => {
+      await tx.mfaMethod.update({
         where: { id: pending.id },
         data: { isPrimary: true, confirmedAt: new Date() },
-      }),
-    ]);
+      });
+      await tx.recoveryCode.deleteMany({ where: { userId } });
+      await tx.recoveryCode.createMany({
+        data: hashed.map((codeHash) => ({ userId, codeHash })),
+      });
+    });
+
+    return { recoveryCodes };
   }
 
   // ─── Email MFA setup ────────────────────────────────────────────────────────

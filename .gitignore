@@ -43,6 +43,12 @@ Thumbs.db
 coverage/
 .nyc_output/
 
+# Turbo local cache
+.turbo/
+
+# Claude Code settings (local)
+.claude/
+
 # Temp
 *.tmp
 tmp/

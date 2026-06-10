@@ -2,7 +2,7 @@
 
 A household-first personal finance web application that gives families a single, trustworthy, 360° view of their money — income, expenses, accounts, and (later) net worth — with budgeting, AI-driven insights, and natural-language access.
 
-> **Status:** Planning complete; Phase 1 ready for development.
+> **Status:** Phase 1 in development. **Epic 0 (foundation) complete**; Wave 2 in progress (Household, Accounts, Categories, Platform Access). Phase 1 is an **invitation-only** limited-user test. See [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md) ("Status & Next Up") for what's being built now.
 
 ---
 
@@ -30,14 +30,16 @@ Recommended reading order:
 
 - **Audience:** households/families first (multi-member, shared + private finances).
 - **Wedge:** budgeting & spending on top of account aggregation.
-- **Differentiator:** AI insights (Phase 2+), with a conversational agent (Phase 3).
+- **Access:** **invitation-only** in Phase 1 (site-admin invites) → household-invites-household beta → open GA. A policy toggle, not a rebuild.
+- **Differentiator:** AI insights (Phase 2+), with a conversational agent (Phase 3). Phase 1 includes an optional **BYOK** AI categorization assist (households use their own Claude/OpenAI/Gemini key).
 - **Connectivity:** Phase 1 uses **document/statement upload + manual entry** (limited-user test); **Plaid** live aggregation arrives in Phase 2 (no stored bank credentials).
 - **Security:** mandatory MFA (Google Authenticator + email); per-account visibility (shared / private / balance-only).
+- **Architecture & hosting:** TypeScript monorepo with a **standalone API** (future mobile + chat clients); **develop local-first**, host on serverless (**GCP Cloud Run + Neon**) when testers onboard; container-portable.
 - **Platform:** web-first (responsive); native mobile later.
 
 ## Phase 1 scope (MVP)
 
-Limited-user test release. Household & membership, mandatory MFA, **document/statement upload + manual entry** (no live aggregation), per-account visibility, categories & sub-categories, budgets with amortized sinking funds, and a spending dashboard with default charts. Plaid aggregation is Phase 2. See [phase1-spec.md](./docs/phase1-spec.md).
+Invitation-only, limited-user test release. **Invitation-only access** (site-admin) & site-admin area, household & membership, mandatory MFA, **document/statement upload + manual entry** (no live aggregation), per-account visibility, categories & sub-categories, budgets with amortized sinking funds, a spending dashboard with default charts, and an **optional BYOK AI categorization** assist. Plaid aggregation and the full AI insights platform are Phase 2. See [phase1-spec.md](./docs/phase1-spec.md).
 
 ## Development
 

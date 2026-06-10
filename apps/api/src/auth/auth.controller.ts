@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
+import { z } from 'zod';
 import {
   SignupBodySchema,
   LoginBodySchema,
@@ -46,6 +47,28 @@ export class AuthController {
     const { token } = body as { token: string };
     await this.auth.verifyEmail(token);
     return ok({ verified: true });
+  }
+
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(200)
+  async forgotPassword(
+    @Body(new ZodValidationPipe(z.object({ email: z.string().email() }))) body: { email: string },
+  ) {
+    await this.auth.forgotPassword(body.email);
+    // Always return the same response — don't leak whether the email exists
+    return ok({ sent: true });
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(200)
+  async resetPassword(
+    @Body(new ZodValidationPipe(z.object({ token: z.string(), password: z.string().min(12) })))
+    body: { token: string; password: string },
+  ) {
+    await this.auth.resetPassword(body.token, body.password);
+    return ok({ reset: true });
   }
 
   @Get('me')

@@ -9,6 +9,37 @@ acceptance bar for each.
 
 ---
 
+## Status & Next Up  *(read this first)*
+
+**Last updated:** 2026-06-10.
+
+**Done:** **Epic 0 — Foundation / Shared Kernel** is implemented (scaffolding, data model, auth, MFA,
+visibility helper, design system, API conventions). The monorepo, packages, and the visibility scope
+contract exist.
+
+**Build right now (Wave 2 + the new platform stories):** these are unblocked and should proceed in
+parallel.
+
+1. **Epic 1 — Household & Membership** (E1.1–E1.5).
+2. **Epic 2 — Accounts & Manual Entry** (E2.1–E2.4).
+3. **Epic 4 — Categories** (E4.1–E4.6).
+4. **NEW · Epic 8 — Platform Access & Site Admin** (E8.1–E8.4, §8 below) — invitation-only signup.
+   Build alongside Epic 1; it gates the signup path Epic 1 depends on. **Start E8.1/E8.2 early.**
+5. **NEW · Epic 9 — BYOK AI Categorization** (E9.1–E9.4, §9 below) — depends on E2 + E4; build in
+   Wave 3 next to Epic 3/5/6.
+
+**Then:** Wave 3 (Epics 3, 5, 6 + Epic 9) → Wave 4 (Epic 7).
+
+**Deployment posture:** **local-first.** Develop and validate on your machine with seed/real data. Do
+**not** stand up a persistent hosted environment yet — see §5.2 for the local-first → smoke-deploy →
+continuous-deploy sequence and the local↔hosted parity rules to follow while building.
+
+**Recent decisions captured below:** local-first deployment + GCP/Neon rationale (§5.1–5.2);
+invitation-only access policy (§8); user-provided (BYOK) AI credentials, pulled into Phase 1 (§9). The
+PRD and roadmap have been reconciled to match.
+
+---
+
 ## 0. Decisions & rationale
 
 | Decision | Choice | Why |
@@ -24,10 +55,16 @@ acceptance bar for each.
 | Web | Vite + React + TanStack Query + Tailwind + Recharts | Pure API client, mirrors how mobile will consume the API; Recharts per the feature breakdown. |
 | Jobs | **Phase 1: inline; Phase 2: Cloud Tasks / Pub-Sub → Cloud Run** | Phase 1 import parsing is small enough to run inline; async fan-out (and Plaid sync) arrives in Phase 2 as request-driven Cloud Run jobs behind a queue interface. No Redis/BullMQ in Phase 1. |
 | Money | Integer minor units (cents) + currency | No float drift in financial math. |
+| Currencies | **USD / EUR / GBP / INR**; per-account currency; **no FX conversion** | Accounts shown natively; base-currency roll-ups only; mixed currencies never blended. See §2.1 "Currency handling". |
+| Profile | Signup captures **name** (+ email/password); **DoB optional** (profile) | Name needed for member list/greeting; DoB optional PII, not required. Role is on `Membership`, not `User`. |
+| Access policy | **Invitation-only** (`admin_invite` → `beta_invite` → `open`) | Phase 1 is a closed test: only people the site admin invites can create an account. Beta opens household-to-household invites; GA opens signup. A policy toggle, not a rewrite. See §8. |
+| AI (Phase 1 slice) | **BYOK** — user supplies their own Claude/OpenAI/Gemini key | Provider-agnostic LLM used to interpret/categorize expenses. Offloads cost + vendor choice during the test; always optional and feature-flagged. See §9. |
+| Deployment | **Local-first**, then serverless when there are testers | Validate locally with real/mock data; avoid paying for idle infra. GCP Cloud Run + Neon idle near-zero when the time comes. See §5.2. |
 
-**Scope reminders:** Phase 1 = limited-user test. Data path is **document upload + manual entry only**.
-**Plaid is Phase 2** (data model leaves seams; we don't build it). AI features have no user-facing
-surface in Phase 1.
+**Scope reminders:** Phase 1 = invitation-only, limited-user test. Data path is **document upload +
+manual entry only**. **Plaid is Phase 2** (data model leaves seams; we don't build it). The only
+user-facing AI in Phase 1 is the **optional BYOK categorization** slice (§9); the full AI insights
+platform (forecasting, coaching, anomalies, conversational agent) remains Phase 2.
 
 **Product name is deferred — keep it out of the code.** `pfm` / `@pfm/*` is the working name and stays
 that way; the real brand name is chosen later, after parts of the app exist. The user-facing app title
@@ -51,7 +88,9 @@ pfm/
   packages/
     contracts/  # Zod schemas + inferred types, per domain (auth, household, accounts, ...)
     db/         # Prisma schema, migrations, generated client, seed
-    core/       # visibility scope, dedup hash, amortization, money utils, dates/periods
+    core/       # visibility scope, dedup hash, amortization, money utils, dates/periods,
+                #   object-store + queue interfaces
+    ai/         # provider-agnostic LlmProvider interface + Anthropic/OpenAI/Google adapters (BYOK, §9)
     ui/         # design tokens + base components + chart wrappers
     config/     # eslint / tsconfig / tailwind / vitest presets
     testing/    # test-data factories + leakage-matrix harness + clock/RNG/SMTP/object-store stubs
@@ -61,7 +100,7 @@ pfm/
   turbo.json, pnpm-workspace.yaml, package.json
 ```
 
-Package names: `@pfm/api`, `@pfm/web`, `@pfm/contracts`, `@pfm/db`, `@pfm/core`,
+Package names: `@pfm/api`, `@pfm/web`, `@pfm/contracts`, `@pfm/db`, `@pfm/core`, `@pfm/ai`,
 `@pfm/ui`, `@pfm/config`, `@pfm/testing` (Phase 1) · `@pfm/worker` (Phase 2).
 
 Each deployable app ships a **Dockerfile** (Next-free; `api` builds a Node server image, `web` a static
@@ -76,18 +115,39 @@ host's lock-in.
 
 Build these in `packages/db`. Names are guidance; keep the relationships and the marked constraints.
 
-- **User** — `id`, `email` (unique), `passwordHash`, `emailVerifiedAt`, timestamps.
+- **User** — `id`, `email` (unique), `passwordHash`, `name` (display name, captured at signup),
+  `dateOfBirth?` (**optional**, nullable — profile field, not required at signup; sensitive PII, store
+  encrypted/min-exposure and only surface where needed), `emailVerifiedAt`, `isSiteAdmin` (bool, default
+  false — **platform** operator role, distinct from household roles), `locale?`, `timezone?`, timestamps.
 - **MfaMethod** — `id`, `userId`, `type` (`totp` | `email`), `secret` (encrypted), `isPrimary`,
   `confirmedAt`. Plus `RecoveryCode` (`userId`, `codeHash`, `usedAt`).
-- **Household** — `id`, `name`, `baseCurrency`, `monthStartDay` (default 1).
+- **Household** — `id`, `name`, `baseCurrency` (one of `USD` | `EUR` | `GBP` | `INR`), `monthStartDay`
+  (default 1).
+- **RegistrationPolicy** *(singleton/global setting)* — `mode` (`admin_invite` | `beta_invite` |
+  `open`), `updatedByUserId`, `updatedAt`. Phase 1 default: `admin_invite`. See §8.
+- **SignupInvite** *(platform allowlist — "may create an account at all")* — `id`, `email`, `token`
+  (unique), `status` (`pending`|`accepted`|`revoked`|`expired`), `expiresAt`, `issuedByUserId?`
+  (site admin), `issuedByHouseholdId?` (beta households, Phase 2), `acceptedUserId?`. **Distinct from
+  `Invite`**, which means "join an existing household as a member."
+- **AiCredential** *(BYOK, §9)* — `id`, `householdId`, `provider` (`anthropic`|`openai`|`google`),
+  `encryptedKey` (KMS-envelope ciphertext — never plaintext, never returned to client), `keyLast4`,
+  `addedByUserId`, `status` (`active`|`invalid`|`revoked`), `lastValidatedAt`.
+- **AiConsent** — `id`, `householdId`, `consentedByUserId`, `scope` (e.g. `categorization`),
+  `grantedAt`, `revokedAt?`. Required before any transaction data is sent to a provider.
 - **Membership** — join entity: `id`, `householdId`, `userId`, `role` (`owner` | `member`),
-  `status`, `joinedAt`. *(Membership is many-to-many on purpose so multi-household is a later
-  constraint relaxation, not a re-architecture. Phase 1 enforces one active household per user.)*
+  `isPrimaryOwner` (bool — the founder; non-removable), `status`, `joinedAt`. *(Membership is
+  many-to-many on purpose so multi-household is a later constraint relaxation, not a re-architecture.
+  Phase 1 enforces one active household per user.)*
+  - **Role mapping** (product term ↔ data): **Owner** = `role:owner` + `isPrimaryOwner:true` (founder,
+    can't be removed/demoted while sole owner); **Co-owner** = `role:owner` + `isPrimaryOwner:false`
+    (same powers, removable); **Member** = `role:member`. Role is set at household creation (founder →
+    owner) or at invite time (co-owner/member) — it is **not** a field on `User`/captured at signup.
 - **Invite** — `id`, `householdId`, `email`, `role`, `token` (unique), `expiresAt`, `status`
   (`pending`|`accepted`|`revoked`), `invitedByUserId`.
 - **Account** — `id`, `householdId`, `ownerUserId`, `name`, `type`, `source`
   (`manual` | `import`; `plaid` reserved for Phase 2), `institution`, `mask`, `balanceMinor`,
-  `currency`, `visibility` (`shared` | `private` | `balance_only`). **Scoped to household + owner.**
+  `currency` (`USD`|`EUR`|`GBP`|`INR`; defaults to household `baseCurrency`),
+  `visibility` (`shared` | `private` | `balance_only`). **Scoped to household + owner.**
 - **Transaction** — `id`, `accountId`, `postedDate`, `merchant`, `merchantNormalized`, `amountMinor`,
   `currency`, `categoryId?`, `dedupHash` (unique per account), `sinkingFundId?`,
   `isReserveFunded` (bool), `importBatchId?`, `tag?` (nullable, reserved for Phase 2).
@@ -105,6 +165,20 @@ Build these in `packages/db`. Names are guidance; keep the relationships and the
 - **AuditLog** — `id`, `householdId`, `actorUserId`, `action`, `targetType`, `targetId`, `metadata`,
   `createdAt`.
 - **Session / RefreshToken** — `id`, `userId`, `tokenHash`, `expiresAt`, `revokedAt`.
+
+**Currency handling (Phase 1 — per-account, NO conversion).** Supported currencies: **USD, EUR, GBP,
+INR** (all 2-decimal minor units, so the integer-cents money model needs no special-casing). Each
+household has a `baseCurrency`; each account has its own `currency` (may differ from base). **Amounts
+are never converted — there is no FX in Phase 1.** Therefore:
+
+- Budgets, budget-vs-actual, and blended household/dashboard **roll-up totals are computed in the
+  household base currency and include only base-currency accounts/transactions.**
+- Accounts and transactions in a **non-base** currency are shown **natively** in their own lists and in
+  a **per-currency breakdown** on the dashboard; they are **excluded from base-currency roll-ups** — no
+  silent conversion or blending of different currencies into one number.
+- Display formatting is locale-aware (`Intl.NumberFormat`; e.g. `en-IN` for INR lakh/crore grouping).
+- FX conversion to a single base is explicitly **deferred** (a later-phase feature needing a rates
+  provider).
 
 ### 2.2 Visibility scope (the critical contract — Epic 0.5)
 
@@ -147,9 +221,9 @@ cross-member leakage for each state.**
 
 | Wave | Epics | Gate |
 |---|---|---|
-| **1** | Epic 0 — Foundation | Must merge to `main` before Wave 2 starts. |
-| **2** | Epic 1 (Household), Epic 2 (Accounts), Epic 4 (Categories) | Build on the kernel, in parallel. |
-| **3** | Epic 3 (Import — **high priority**), Epic 5 (Transactions), Epic 6 (Budgets) | Stub upstream where needed. |
+| **1** | Epic 0 — Foundation ✅ *(done)* | Must merge to `main` before Wave 2 starts. |
+| **2** | Epic 1 (Household), Epic 2 (Accounts), Epic 4 (Categories), **Epic 8 (Access & Site Admin)** | Build on the kernel, in parallel. Epic 8 gates signup — start it early. |
+| **3** | Epic 3 (Import — **high priority**), Epic 5 (Transactions), Epic 6 (Budgets), **Epic 9 (BYOK AI)** | Stub upstream where needed. |
 | **4** | Epic 7 (Dashboard) | Integrates transactions + budgets; lands last. |
 
 The rest of this section is the per-epic task list. Each story cites its PRD requirement and lists the
@@ -176,8 +250,9 @@ concrete work and the acceptance bar. Sizes (S/M/L) carry over from the epic doc
 - **Done when:** migrations apply cleanly; Prisma client generated and exported from `@pfm/db`.
 
 **E0.3 Authentication** *(M)* — PRD: S-1, S-3
-- Email/password signup, `argon2` hashing, email verification, login, JWT access + refresh with
-  rotation and inactivity expiry. Contracts in `@pfm/contracts/auth`.
+- Email/password/**name** signup, `argon2` hashing, email verification, login, JWT access + refresh with
+  rotation and inactivity expiry. Contracts in `@pfm/contracts/auth`. (`dateOfBirth` is an optional
+  profile field edited later, not collected at signup.)
 - **Done when:** a verified user can log in and refresh; expired/invalid tokens rejected; tests cover it.
 
 **E0.4 Mandatory MFA** *(L)* — PRD: S-2
@@ -208,21 +283,23 @@ concrete work and the acceptance bar. Sizes (S/M/L) carry over from the epic doc
 
 ### Epic 1 — Household & Membership  *(Wave 2)*  — depends on E0
 
-- **E1.1 Create household on signup** *(S, H-1)* — first user = Owner; household has name, base
-  currency, month-start.
+- **E1.1 Create household on signup** *(S, H-1)* — first user = **Owner** (`role:owner` +
+  `isPrimaryOwner:true`); household has name, base currency (USD/EUR/GBP/INR), month-start.
 - **E1.2 Invite member with role** *(M, H-2/H-4)* — invite by email + role; unique expiring link;
   pending invites listed; resend/revoke.
 - **E1.3 Accept invite & join** *(M, H-3)* — invitee creates own login (+MFA), joins, sees shared view
   per permissions; existing email → link to household after confirmation (one active household/user).
-- **E1.4 Manage roles & remove member** *(M, H-4/H-5)* — change role; remove (access revoked
-  immediately; their accounts **detached not deleted**); cannot remove/demote the last owner.
+- **E1.4 Manage roles & remove member** *(M, H-4/H-5)* — change role (owner↔member; "co-owner" =
+  `role:owner` non-primary); remove (access revoked immediately; their accounts **detached not
+  deleted**); **cannot remove/demote the primary owner** while they're the sole owner.
 - **E1.5 Household settings** *(S, H-1)* — edit name/currency/month-start; member list with roles +
   last login. *(Member/role/visibility changes write AuditLog.)*
 
 ### Epic 2 — Accounts & Manual Entry  *(Wave 2)*  — depends on E0
 
 - **E2.1 Account model** *(M, A-1/A-2)* — account scoped to household+owner; sources `manual`/`import`
-  (Plaid reserved Phase 2); balance/institution/mask.
+  (Plaid reserved Phase 2); balance/institution/mask; **per-account `currency`** (USD/EUR/GBP/INR,
+  defaults to household base; no conversion — see §2.1 Currency handling).
 - **E2.2 Manual account & transactions** *(M, A-2)* — add manual account; add/edit transactions by hand.
 - **E2.3 Per-account visibility** *(M, A-3)* — owner sets shared/private/balance-only; only owner can
   change; enforced via E0.5; defaults joint→shared, individual→private.
@@ -288,10 +365,61 @@ concrete work and the acceptance bar. Sizes (S/M/L) carry over from the epic doc
   visibility).
 - **E7.2 Default charts** *(M, D-3)* — spending by category; spending over time (**6-month default**,
   3M/6M toggle); income vs expenses; budget vs actual; interactive (hover amounts); visibility-aware;
-  show **actuals**.
+  show **actuals**. **Currency-aware:** roll-ups are base-currency only; non-base-currency accounts
+  appear in a separate per-currency breakdown, never blended (§2.1).
 - **E7.3 Reserve-funded marking on spending-over-time** *(S, B-6)* — in the Actual view, the
   reserve-funded portion of a month is a distinct labeled segment so the spike is self-explaining.
-- **Phase 2 (do not build):** custom chart builder, net worth charts, rental cash-flow report.
+- **E7.4 Period comparison report** *(M, D-5)* — compare spending **by category** across two periods,
+  granularity selectable **month/quarter/year over prior or year-ago**; per-category totals + absolute/%
+  change + total row; expand to sub-categories; visibility- and currency-aware (base-currency roll-ups);
+  savable to dashboard. Period math (period boundaries, prior/year-ago resolution) lives in `@pfm/core`.
+- **Phase 2 (do not build):** custom chart **builder**, net worth charts, rental cash-flow report. (E7.4
+  is a fixed report, not the builder.)
+
+### Epic 8 — Platform Access & Site Admin  *(NEW · Wave 2 — build alongside Epic 1)*  — depends on E0
+
+**Goal:** Phase 1 is **invitation-only**. Only people the site admin invites can create an account.
+The mechanism is a policy toggle that later opens to beta (household-to-household invites) and then GA.
+**This is platform-level access, distinct from household member invites (Epic 1).**
+
+- **E8.1 Registration policy + gated signup** *(M, PRD: S-6)* — a global `RegistrationPolicy.mode`
+  (`admin_invite` | `beta_invite` | `open`, default `admin_invite`). The signup endpoint enforces the
+  active policy **server-side**: in `admin_invite` mode, signup requires a valid, unexpired
+  `SignupInvite` token for that email, which is consumed on success. Rate-limited.
+  - AC: no account can be created without a valid invite while in `admin_invite`. UI hiding is not
+    sufficient — enforcement is on the API.
+- **E8.2 Site-admin role + bootstrap** *(S)* — `User.isSiteAdmin`; a guard for admin-only endpoints;
+  **seed the first site admin** (`hksingh@gmail.com`) via migration/seed since no admin exists to invite
+  the first one.
+- **E8.3 Admin area (guarded `/admin`, not a separate app)** *(M)* — site-admin-only routes + API to
+  issue / list / resend / revoke `SignupInvite`s, view pending vs accepted, and a basic user list.
+  Require site-admin **and** MFA; intended to sit behind IAP/IP-allowlist in any hosted env.
+- **E8.4 Beta & GA policy switches** *(S — forward-built, exercised later)* — `beta_invite` lets an
+  existing household issue signup-invites (with a per-household quota), reusing the same `SignupInvite`
+  flow (`issuedByHouseholdId`); `open` requires no invite. Phase 1 ships the toggle + `admin_invite`
+  path; beta/GA are config flips, not new builds.
+
+### Epic 9 — BYOK AI Categorization  *(NEW · Wave 3 — build with Epics 3/5/6)*  — depends on E2, E4
+
+**Goal:** let a household supply **their own** AI provider key (Claude / OpenAI / Gemini) and use that
+LLM to interpret/categorize expenses. **Always optional, feature-flagged, and never a hard dependency**
+— the app works fully with no key configured (falls back to rules/uncategorized). This pulls a thin AI
+slice into Phase 1; the broader AI platform remains Phase 2.
+
+- **E9.1 Provider-agnostic LLM layer** *(M, PRD: AI-1)* — `@pfm/ai` with an `LlmProvider` interface
+  (`categorizeTransaction`, `interpretExpense`) and adapters for Anthropic, OpenAI, Google. No provider
+  SDK leaks past the interface.
+- **E9.2 BYOK credential management** *(M, PRD: AI-2 · highest-risk story in this epic)* — store the key
+  with **GCP KMS envelope encryption** (ciphertext in `AiCredential`, decrypt in-memory at call time
+  only); validate the key with a cheap test call on save; write-only (surface only provider + last-4 +
+  status); rotate/revoke. Key scope is **per-household**, set by an owner, recording who added it.
+- **E9.3 Consent + data minimization** *(S, PRD: AI-3, NFR-3)* — explicit, revocable `AiConsent`
+  required before any data leaves the system; send only the **normalized merchant** (+ amount) — never
+  account numbers, masks, or member identity. Disclose the provider in the consent copy.
+- **E9.4 Categorization integration + rule caching** *(M, PRD: AI-1)* — on import (extends E3.4) and as
+  a "suggest category" action (extends E4.6/E5.2), call the user's LLM to suggest a category; user
+  confirms. On confirm, write a `CategoryRule` so the same merchant is never sent to the LLM twice
+  (cache + cost control). Graceful fallback on missing key / provider error.
 
 ---
 
@@ -310,9 +438,17 @@ GET    /categories           POST /categories              PATCH/DELETE /categor
 GET    /transactions         PATCH /transactions/:id        POST /transactions
 GET    /budgets              PUT  /budgets                  GET /sinking-funds  POST /sinking-funds
 GET    /dashboard            GET  /reports/charts
+# Platform access (Epic 8) — site-admin-only except where noted:
+GET    /admin/signup-invites  POST /admin/signup-invites    POST /admin/signup-invites/:id/revoke
+GET    /admin/registration-policy   PATCH /admin/registration-policy   GET /admin/users
+# (public) signup consumes a SignupInvite token when policy = admin_invite/beta_invite
+# AI / BYOK (Epic 9) — household-scoped, owner-managed:
+GET    /ai/settings          PUT  /ai/credential            DELETE /ai/credential   POST /ai/credential/test
+POST   /ai/consent           DELETE /ai/consent             POST /transactions/:id/suggest-category
 ```
 
 Every account/transaction/dashboard endpoint resolves a `Scope` and passes it to the data layer.
+Admin endpoints require `isSiteAdmin` + MFA. AI key values are never returned by any endpoint.
 
 ---
 
@@ -325,14 +461,18 @@ DATABASE_URL=postgresql://...            # Neon (use the pooled connection strin
 DATABASE_URL_TEST=postgresql://...       # dedicated pfm_test database for integration tests
 JWT_ACCESS_SECRET=        JWT_REFRESH_SECRET=        ENCRYPTION_KEY=   # for at-rest field/file encryption
 SMTP_URL=                                # email verification + MFA email codes
-GCS_BUCKET=  GOOGLE_APPLICATION_CREDENTIALS=         # encrypted statement-file storage (GCS)
+STORAGE_DRIVER=local|gcs   GCS_BUCKET=   GOOGLE_APPLICATION_CREDENTIALS=   # statement-file storage
+KMS_KEY_RESOURCE=                        # GCP KMS key for BYOK AI envelope encryption (Epic 9)
+REGISTRATION_POLICY=admin_invite         # bootstrap default; persisted in RegistrationPolicy thereafter
+PUBLIC_APP_NAME=PFM                      # the one place a user-facing product name lives (rename later)
 WEB_ORIGIN=                              # CORS allowlist
+PORT=                                     # server listens on $PORT (Cloud Run requirement)
 ```
 
 In production these are supplied by **GCP Secret Manager**, injected into the Cloud Run service — not
 committed anywhere. Locally they live in an uncommitted `.env`.
 
-### 5.1 Hosting (Stage 1 / limited test) — Google Cloud
+### 5.1 Hosting target — Google Cloud  *(the destination for step 3 of §5.2, not "deploy this now")*
 
 - **API:** NestJS built into a container image, deployed to **Cloud Run** (scales to zero; HTTPS
   provided). The CI pipeline builds the image, pushes to Artifact Registry, and deploys the service.
@@ -353,6 +493,43 @@ External Load Balancer + serverless NEG later if you need apex-domain support, C
 interface — so moving off GCP (or running elsewhere) is a redeploy + config change, not a rewrite.
 Don't reach for GCP-proprietary runtime APIs inside app code; keep that at the infra edge.
 
+> **Cloud choice is reversible, so don't over-invest in it.** GCP Cloud Run + Neon is the target for its
+> scale-to-zero economics and low ops overhead. Because the app is a container with a cloud-agnostic DB
+> (Neon runs reachable from any cloud) and adapters at the edges, moving to AWS App Runner / Lambda or
+> Azure Container Apps later is a redeploy, not a rewrite. AWS adds breadth + Bedrock-hosted Claude;
+> Azure suits MS-ecosystem shops; neither is a Phase-1 factor.
+
+### 5.2 Deployment sequence — local-first (do NOT host a persistent env yet)
+
+Validate the product on your machine before paying for any infra. Serverless idles near-zero, but a
+persistent hosted environment earns its keep only once there are humans to serve.
+
+1. **Now — local only.** Run everything locally (`docker compose` Postgres or a Neon dev branch; local
+   filesystem storage driver; `.env`). Validate with seed/mock data and your own real statements. CI
+   runs lint + typecheck + test + **image build** on every PR — but **no deploy step yet**.
+2. **Soon — one cheap smoke-deploy.** Deploy the walking skeleton (health + signup/login/MFA) to Cloud
+   Run **once** to flush out container/IAM/secrets/DB-connection issues, then let it idle at zero (or
+   tear it down). Cheaper substitute if even this feels early: run the production container locally via
+   `docker run` regularly so you know the image is deployable.
+3. **When you onboard the first invited testers — turn on continuous deploy.** Merge-to-`main` builds +
+   deploys to a real environment. Lock it down (IAP/IP-allowlist + the Epic 8 invite gate). Stand up
+   production only at limited-test launch.
+
+**Local↔hosted parity rules (follow these while building so step 3 is config, not code):**
+
+- **All config via env** — DB URL, secrets, storage, AI/KMS, `$PORT`, `PUBLIC_APP_NAME`. No hardcoded
+  hosts, ports, or file paths; one config module reads env (`.env` locally, Secret Manager hosted).
+- **Stateless; no local-disk persistence.** Uploads go through the `@pfm/core` object-store interface —
+  `STORAGE_DRIVER=local` in dev, `gcs` in prod. Same code path.
+- **Same Postgres engine both places** (Docker/Neon dev branch ↔ Neon prod) — only the connection
+  string changes; Prisma is identical.
+- **Container parity** — "runs in Docker locally" must equal "runs on Cloud Run." Keep the Dockerfile
+  green from day one.
+- **Provider calls at the edge only** — object store, queue, KMS behind interfaces; never sprinkled
+  through business logic.
+- **Ops basics present early** — `/health` endpoint, listen on `$PORT`, graceful shutdown, migrations
+  as a runnable step.
+
 ---
 
 ## 6. Definition of Done (per story)
@@ -361,11 +538,13 @@ Code + tests written; acceptance criteria met; **visibility rules respected and 
 any account/transaction endpoint; money handled in integer minor units; sensitive actions audited; PR
 links story ID + PRD ref; lint + typecheck + tests green; reviewed; squash-merged to the epic branch.
 
-**Phase 1 is "done"** when a two-person household can: sign up + verify + enroll MFA; invite a partner
-who joins with their own login and role; add accounts via upload and/or manual entry with per-account
-visibility; manage categories/sub-categories with safe deletion; run monthly budgets with sub-categories
-and at least one amortized sinking fund; and view an accurate shared dashboard with the
-household/personal toggle and default charts — securely on the responsive web app.
+**Phase 1 is "done"** when a site-admin-invited user can: sign up (invitation-only) + verify + enroll
+MFA; invite a partner who joins with their own login and role; add accounts via upload and/or manual
+entry with per-account visibility; manage categories/sub-categories with safe deletion (optionally
+AI-assisted via their own provider key); run monthly budgets with sub-categories and at least one
+amortized sinking fund; and view an accurate shared dashboard with the household/personal toggle and
+default charts — securely on the responsive web app. (AI is optional; the app is fully usable without a
+key.)
 
 ---
 
@@ -451,4 +630,6 @@ is one call.
 | E4 Categories | Safe deletion can't orphan; parent total = subs + direct; protected Income undeletable. |
 | E5 Transactions | Visibility-scoped list; recategorize + rule application; reserve-funded badge linkage. |
 | E6 Budgets | Amortization spreads correctly; reserve accrues/draws without spike; shortfall flagged; sub-budgets roll up. |
-| E7 Dashboard | Charts visibility-aware; household vs personal totals; reserve-funded segment on spending-over-time. |
+| E7 Dashboard | Charts visibility-aware; household vs personal totals; reserve-funded segment on spending-over-time; **base-currency roll-ups exclude non-base accounts (no blending/conversion)**; period-comparison deltas correct for MoM/QoQ/YoY incl. period-boundary/year-ago resolution. |
+| E8 Access | Signup blocked without a valid invite in `admin_invite` (server-side); invite consumed once; expired/revoked rejected; admin endpoints reject non-site-admins; first admin seeded. |
+| E9 BYOK AI | App works with no key (fallback); key never returned/logged; KMS round-trip; no data sent without consent; only normalized merchant leaves; confirmed suggestion writes a rule (no repeat LLM call). |

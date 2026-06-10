@@ -29,8 +29,8 @@ export class MfaController {
     @CurrentUser() user: AccessTokenPayload,
     @Body(new ZodValidationPipe(TotpConfirmBodySchema)) body: TotpConfirmBody,
   ) {
-    await this.mfa.confirmTotpSetup(user.sub, body.code);
-    return ok({ enrolled: true });
+    const result = await this.mfa.confirmTotpSetup(user.sub, body.code);
+    return ok(result);
   }
 
   // ─── Email MFA ──────────────────────────────────────────────────────────────
