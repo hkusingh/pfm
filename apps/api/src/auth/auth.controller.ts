@@ -49,7 +49,7 @@ export class AuthController {
   }
 
   @Get('me')
-  async me(@CurrentUser() user: AccessTokenPayload) {
+  async me(@CurrentUser() user: AccessTokenPayload): Promise<ReturnType<typeof ok>> {
     const data = await this.auth.getMe(user.sub);
     return ok(data);
   }

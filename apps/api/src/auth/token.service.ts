@@ -13,11 +13,6 @@ function accessSecret() {
   return new TextEncoder().encode(s);
 }
 
-function refreshSecret() {
-  const s = process.env.JWT_REFRESH_SECRET;
-  if (!s) throw new Error('JWT_REFRESH_SECRET is not set');
-  return new TextEncoder().encode(s);
-}
 
 @Injectable()
 export class TokenService {

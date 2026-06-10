@@ -2,7 +2,8 @@
   "name": "@pfm/db",
   "version": "0.0.1",
   "private": true,
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "prisma": {
     "schema": "prisma/schema.prisma"
   },
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "@pfm/config": "workspace:*",
+    "@types/node": "^22.0.0",
     "prisma": "^5.22.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"

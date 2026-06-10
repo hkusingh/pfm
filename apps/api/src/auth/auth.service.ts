@@ -14,10 +14,14 @@ import type {
   RefreshResponse,
 } from '@pfm/contracts';
 import { TokenService } from './token.service';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly tokens: TokenService) {}
+  constructor(
+    private readonly tokens: TokenService,
+    private readonly email: EmailService,
+  ) {}
 
   async signup(body: SignupBody): Promise<{ userId: string; email: string }> {
     const existing = await prisma.user.findUnique({ where: { email: body.email } });
@@ -28,8 +32,12 @@ export class AuthService {
       data: { email: body.email, passwordHash },
     });
 
-    // Email verification would be sent here in a full implementation (E0.3 scope).
-    // For now the verification link would call POST /auth/verify-email with a signed token.
+    const token = await this.createEmailVerificationToken(user.id);
+    const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
+    await this.email.sendEmailVerification(
+      user.email,
+      `${webOrigin}/verify-email?token=${token}`,
+    );
 
     return { userId: user.id, email: user.email };
   }
@@ -99,7 +107,13 @@ export class AuthService {
       .sign(secret);
   }
 
-  async getMe(userId: string) {
+  async getMe(userId: string): Promise<{
+    id: string;
+    email: string;
+    emailVerifiedAt: Date | null;
+    createdAt: Date;
+    mfaMethods: { type: string; isPrimary: boolean; confirmedAt: Date | null }[];
+  }> {
     const user = await prisma.user.findUniqueOrThrow({
       where: { id: userId },
       select: { id: true, email: true, emailVerifiedAt: true, createdAt: true },
@@ -108,7 +122,7 @@ export class AuthService {
       where: { userId, confirmedAt: { not: null } },
       select: { type: true, isPrimary: true, confirmedAt: true },
     });
-    return { ...user, mfaMethods };
+    return { ...user, mfaMethods: mfaMethods.map((m) => ({ ...m, type: m.type as string })) };
   }
 
   // Used by the global JWT guard to look up the current user

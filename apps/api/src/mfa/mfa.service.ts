@@ -11,6 +11,7 @@ import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'crypt
 import { prisma } from '@pfm/db';
 import { AuthService } from '../auth/auth.service';
 import { TokenService } from '../auth/token.service';
+import { EmailService } from '../email/email.service';
 import type { MfaVerifyBody } from '@pfm/contracts';
 
 // AES-256-GCM encryption for MFA secrets at rest
@@ -37,12 +38,12 @@ function decrypt(ciphertext: string): string {
 
 const APP_NAME = process.env.PUBLIC_APP_NAME ?? 'PFM';
 const EMAIL_CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-const MAX_MFA_ATTEMPTS = 5;
 
 @Injectable()
 export class MfaService {
   constructor(
     private readonly tokens: TokenService,
+    private readonly email: EmailService,
   ) {}
 
   // ─── TOTP setup ─────────────────────────────────────────────────────────────
@@ -53,7 +54,6 @@ export class MfaService {
     const secret = authenticator.generateSecret();
     const otpauthUrl = authenticator.keyuri(user.email, APP_NAME, secret);
 
-    // Store unconfirmed TOTP method (encrypted secret)
     await prisma.mfaMethod.upsert({
       where: { id: `${userId}_totp_pending` },
       create: {
@@ -69,7 +69,6 @@ export class MfaService {
     const qrCodeDataUrl = await qrcode.toDataURL(otpauthUrl);
     const { plain: recoveryCodes, hashed } = AuthService.generateRecoveryCodes();
 
-    // Store hashed recovery codes (replace any prior set for this user)
     await prisma.recoveryCode.deleteMany({ where: { userId } });
     await prisma.recoveryCode.createMany({
       data: hashed.map((codeHash) => ({ userId, codeHash })),
@@ -89,7 +88,6 @@ export class MfaService {
       throw new BadRequestException('Invalid TOTP code');
     }
 
-    // Promote to confirmed primary method
     await prisma.$transaction([
       prisma.mfaMethod.update({
         where: { id: pending.id },
@@ -108,7 +106,6 @@ export class MfaService {
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const codeHash = createHash('sha256').update(code).digest('hex');
-    // Store encrypted with expiry encoded in the secret field as JSON
     const payload = JSON.stringify({ codeHash, expiresAt: Date.now() + EMAIL_CODE_TTL_MS });
 
     await prisma.mfaMethod.upsert({
@@ -123,8 +120,7 @@ export class MfaService {
       update: { secret: encrypt(payload) },
     });
 
-    // Email sending is injected via the mail service (stub in E0.4; wired in E0.3 completion)
-    await sendEmail(user.email, code);
+    await this.email.sendMfaCode(user.email, code);
   }
 
   async confirmEmailMfaSetup(userId: string, code: string): Promise<void> {
@@ -157,7 +153,6 @@ export class MfaService {
         throw new BadRequestException('Invalid TOTP code');
       }
     } else {
-      // email code — re-send must have been triggered; the active code is in the pending method
       const emailMethod = await prisma.mfaMethod.findUnique({
         where: { id: `${userId}_email_pending` },
       });
@@ -171,7 +166,6 @@ export class MfaService {
 
   // ─── Recovery code login ─────────────────────────────────────────────────────
 
-  // Re-authenticates with email + password, then consumes a recovery code.
   async recoverViaCode(body: {
     email: string;
     password: string;
@@ -179,7 +173,6 @@ export class MfaService {
   }): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
     const user = await prisma.user.findUnique({ where: { email: body.email } });
 
-    // Constant-time check — always run argon2 to prevent user enumeration
     const dummy = '$argon2id$v=19$m=65536,t=3,p=4$dummysaltfortimingggg$dummyhashvalue000000000000000000000000000';
     const valid = user
       ? await argon2.verify(user.passwordHash, body.password)
@@ -209,17 +202,4 @@ export class MfaService {
     const submitted = createHash('sha256').update(submittedCode).digest('hex');
     if (submitted !== codeHash) throw new BadRequestException('Invalid email code');
   }
-}
-
-// Thin email stub — replaced with a real nodemailer transport in E0.3/app wiring
-async function sendEmail(to: string, code: string): Promise<void> {
-  if (process.env.NODE_ENV === 'test') return;
-  const nodemailer = await import('nodemailer');
-  const transport = nodemailer.createTransport(process.env.SMTP_URL ?? 'smtp://localhost:25');
-  await transport.sendMail({
-    from: `"${process.env.PUBLIC_APP_NAME ?? 'PFM'}" <noreply@pfm.local>`,
-    to,
-    subject: 'Your login verification code',
-    text: `Your verification code is: ${code}\n\nThis code expires in 10 minutes.`,
-  });
 }

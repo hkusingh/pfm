@@ -12,6 +12,11 @@ dist/
 build/
 out/
 *.tsbuildinfo
+# Prevent compiled JS/declarations leaking into src/ (packages emit to dist/)
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.d.ts.map
 
 # Environment & secrets
 .env

@@ -30,7 +30,28 @@
       "Bash(git -C /Users/harsh/projects/pfm status)",
       "Bash(git -C /Users/harsh/projects/pfm log --oneline -5)",
       "Bash(git -C /Users/harsh/projects/pfm commit -m ' *)",
-      "Bash(git -C /Users/harsh/projects/pfm log main..epic/0-foundation --oneline)"
+      "Bash(git -C /Users/harsh/projects/pfm log main..epic/0-foundation --oneline)",
+      "Bash(/opt/homebrew/bin/pnpm --filter @pfm/api typecheck)",
+      "Bash(DATABASE_URL=postgresql://harsh@localhost:5432/pfm_dev JWT_ACCESS_SECRET=dev-access-secret-change-before-any-real-deploy-32ch JWT_REFRESH_SECRET=dev-refresh-secret-change-before-any-real-deploy-32c ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000 /opt/homebrew/bin/pnpm --filter @pfm/api dev)",
+      "Bash(curl -s http://localhost:3000/health)",
+      "Bash(python3 -m json.tool)",
+      "Bash(kill %1)",
+      "Bash(/opt/homebrew/bin/pnpm --filter @pfm/api add -D tsconfig-paths)",
+      "Bash(DATABASE_URL=postgresql://harsh@localhost:5432/pfm_dev JWT_ACCESS_SECRET=dev-access-secret-change-before-any-real-deploy-32ch JWT_REFRESH_SECRET=dev-refresh-secret-change-before-any-real-deploy-32c ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000 WEB_ORIGIN=http://localhost:5173 /opt/homebrew/bin/pnpm --filter @pfm/api dev)",
+      "Bash(echo \"API starting, PID $!\")",
+      "Bash(/opt/homebrew/bin/pnpm --filter @pfm/contracts build)",
+      "Bash(/opt/homebrew/bin/pnpm --filter @pfm/core build)",
+      "Bash(/opt/homebrew/bin/pnpm --filter @pfm/db build)",
+      "Bash(/opt/homebrew/bin/pnpm --filter @pfm/db add -D @types/node)",
+      "Bash(echo \"PID $!\")",
+      "Bash(curl -s -X POST http://localhost:3000/auth/signup -H 'Content-Type: application/json' -d '{\"email\":\"test@example.com\",\"password\":\"supersecret12345\"}')",
+      "Bash(curl -s -X POST http://localhost:3000/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"test@example.com\",\"password\":\"supersecret12345\"}')",
+      "Bash(curl -s http://localhost:3000/auth/me -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJjbXE3aXRpY2YwMDAwbm9mcTJ2MThycTRlIiwiZW1haWwiOiJ0ZXN0QGV4YW1wbGUuY29tIiwibWZhVmVyaWZpZWQiOmZhbHNlLCJpYXQiOjE3ODEwNjI4MjQsImV4cCI6MTc4MTA2MzcyNH0.-w-xkE4SHgF7GDaC7tfmQ7Z383_9wmVVstNPbrEHnpE')",
+      "Bash(curl -s http://localhost:3000/auth/me -H 'Authorization: Bearer bad-token')",
+      "Bash(curl -s -X POST http://localhost:3000/auth/signup -H 'Content-Type: application/json' -d '{\"email\":\"test@example.com\",\"password\":\"short\"}')",
+      "Bash(/opt/homebrew/bin/pnpm --filter @pfm/api add resend)",
+      "Bash(curl -s -X POST http://localhost:3000/auth/signup -H 'Content-Type: application/json' -d '{\"email\":\"resend-test@example.com\",\"password\":\"supersecret12345\"}')",
+      "Bash(grep -v \"^$\")"
     ]
   }
 }
