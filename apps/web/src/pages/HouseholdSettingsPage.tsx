@@ -157,6 +157,7 @@ export function HouseholdSettingsPage() {
 
   const navItems = [
     { label: 'Dashboard', href: '/dashboard', active: false },
+    { label: 'Accounts', href: '/accounts', active: false },
     { label: 'Household', href: '/settings/household', active: true },
     ...(me?.isSiteAdmin ? [{ label: 'Admin', href: '/admin', active: false }] : []),
   ];

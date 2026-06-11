@@ -423,10 +423,11 @@ enum RegistrationMode {
 }
 
 model RegistrationPolicy {
-  id        Int              @id @default(1)
-  mode      RegistrationMode @default(admin_invite)
-  updatedAt DateTime         @updatedAt
-  updatedBy String?
+  id                   Int              @id @default(1)
+  mode                 RegistrationMode @default(admin_invite)
+  householdInviteQuota Int              @default(5)
+  updatedAt            DateTime         @updatedAt
+  updatedBy            String?
 }
 
 model SignupInvite {

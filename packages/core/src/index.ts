@@ -7,3 +7,4 @@
 //         money utilities (addMinor, formatMinor, etc.)
 //         period / date helpers
 export * from './visibility';
+export * from './dedup';

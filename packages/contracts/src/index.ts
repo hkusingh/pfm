@@ -4,3 +4,4 @@
 export * from './auth';
 export * from './mfa';
 export * from './household';
+export * from './account';

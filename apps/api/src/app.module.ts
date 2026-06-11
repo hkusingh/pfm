@@ -8,6 +8,7 @@ import { MfaModule } from './mfa/mfa.module';
 import { PrivacyModule } from './privacy/privacy.module';
 import { AdminModule } from './admin/admin.module';
 import { HouseholdModule } from './household/household.module';
+import { AccountModule } from './account/account.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { HouseholdModule } from './household/household.module';
     PrivacyModule,
     AdminModule,
     HouseholdModule,
+    AccountModule,
   ],
   controllers: [AppController],
   providers: [

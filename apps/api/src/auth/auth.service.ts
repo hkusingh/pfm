@@ -30,7 +30,7 @@ export class AuthService {
       // Full enforcement: check registration policy and invite token
       const policy = await prisma.registrationPolicy.findUniqueOrThrow({ where: { id: 1 } });
 
-      if (policy.mode === 'admin_invite') {
+      if (policy.mode === 'admin_invite' || policy.mode === 'beta_invite') {
         if (!body.inviteToken) {
           throw new ForbiddenException('An invitation is required to create an account');
         }
@@ -42,6 +42,7 @@ export class AuthService {
           throw new ForbiddenException('This invite was issued for a different email address');
         }
       }
+      // open mode: no invite required — fall through
     }
 
     const existing = await prisma.user.findUnique({ where: { email: body.email } });

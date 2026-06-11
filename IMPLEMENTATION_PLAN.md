@@ -18,23 +18,19 @@ acceptance bar for each.
   (signup/login/email verify/password reset), mandatory MFA (TOTP + recovery codes), visibility scope
   helper, design system (`@pfm/ui`), API conventions (envelope, Zod validation, global guards), privacy
   endpoints (data export + deletion). Merged to `main`.
-- **Epic 8 — Platform Access & Site Admin** ✅ (E8.1–E8.3) — invitation-only signup enforced
+- **Epic 8 — Platform Access & Site Admin** ✅ (E8.1–E8.4) — invitation-only signup enforced
   server-side, `RegistrationPolicy` toggle (`admin_invite` | `beta_invite` | `open`), site-admin role
   + seed (`hksingh@gmail.com`), admin UI at `/admin` (invite management, user list, policy toggle).
-  Merged to `main`.
-- **E8.4 (pending — small):** `beta_invite` quota enforcement + `open` mode signup fallthrough.
-  Decision: **5 pending invites per household** (pending = `usedAt IS NULL AND expiresAt > now`;
-  slot reopens when invite is accepted or expires). Needs: `householdInviteQuota Int @default(5)` on
-  `RegistrationPolicy`; fix `AuthService.signup()` for `open`/`beta_invite` branches; expose quota in
-  policy API + UI. Household-side invite creation UI deferred to Epic 1.
+  `householdInviteQuota` field on `RegistrationPolicy` (default 5); `beta_invite` requires valid
+  invite token; `open` allows free signup; quota exposed in policy API + admin UI.
+- **Epic 1 — Household & Membership** ✅ (E1.1–E1.5) — household CRUD, member management, invite
+  flow. Merged to `main`.
+- **Epic 2 — Accounts & Manual Entry** ✅ (E2.1–E2.4) — manual account CRUD, per-account
+  visibility, transaction CRUD with dedup hash, balance sync. Merged to `main`.
 
-**Build right now (Wave 2):** these are unblocked and should proceed in parallel.
+**Build right now (Wave 2 — remaining):**
 
-1. **Epic 1 — Household & Membership** (E1.1–E1.5) — creates the household a user belongs to;
-   gates accounts, categories, and everything downstream.
-2. **Epic 2 — Accounts & Manual Entry** (E2.1–E2.4) — depends on E1.
-3. **Epic 4 — Categories** (E4.1–E4.6) — depends on E1.
-4. **E8.4** — small; can be slotted in alongside any Wave 2 story.
+1. **Epic 4 — Categories** (E4.1–E4.6) — depends on E1 ✅.
 
 **Then:** Wave 3 (Epic 3 Import — high priority, Epic 5 Transactions, Epic 6 Budgets, Epic 9 BYOK AI)
 → Wave 4 (Epic 7 Dashboard).

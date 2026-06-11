@@ -13,17 +13,25 @@ export class AdminService {
 
   // ── Registration policy ────────────────────────────────────────────────────
 
-  async getPolicy(): Promise<{ mode: RegistrationMode }> {
+  async getPolicy(): Promise<{ mode: RegistrationMode; householdInviteQuota: number }> {
     const policy = await prisma.registrationPolicy.findUniqueOrThrow({ where: { id: 1 } });
-    return { mode: policy.mode };
+    return { mode: policy.mode, householdInviteQuota: policy.householdInviteQuota };
   }
 
-  async setPolicy(mode: RegistrationMode, adminId: string): Promise<{ mode: RegistrationMode }> {
+  async setPolicy(
+    mode: RegistrationMode,
+    adminId: string,
+    householdInviteQuota?: number,
+  ): Promise<{ mode: RegistrationMode; householdInviteQuota: number }> {
     const policy = await prisma.registrationPolicy.update({
       where: { id: 1 },
-      data: { mode, updatedBy: adminId },
+      data: {
+        mode,
+        updatedBy: adminId,
+        ...(householdInviteQuota !== undefined ? { householdInviteQuota } : {}),
+      },
     });
-    return { mode: policy.mode };
+    return { mode: policy.mode, householdInviteQuota: policy.householdInviteQuota };
   }
 
   // ── Signup invites ─────────────────────────────────────────────────────────

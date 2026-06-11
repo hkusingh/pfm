@@ -8,7 +8,10 @@ import { AdminService } from './admin.service';
 import type { AccessTokenPayload } from '@pfm/contracts';
 
 const RegistrationModeValues = ['admin_invite', 'beta_invite', 'open'] as const;
-const PolicySchema = z.object({ mode: z.enum(RegistrationModeValues) });
+const PolicySchema = z.object({
+  mode: z.enum(RegistrationModeValues),
+  householdInviteQuota: z.number().int().min(1).max(50).optional(),
+});
 const InviteSchema = z.object({ email: z.string().email() });
 
 @Controller('admin')
@@ -28,7 +31,7 @@ export class AdminController {
     @CurrentUser() user: AccessTokenPayload,
     @Body(new ZodValidationPipe(PolicySchema)) body: z.infer<typeof PolicySchema>,
   ) {
-    return ok(await this.admin.setPolicy(body.mode, user.sub));
+    return ok(await this.admin.setPolicy(body.mode, user.sub, body.householdInviteQuota));
   }
 
   // ── Signup invites ────────────────────────────────────────────────────────
