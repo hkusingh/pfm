@@ -18,18 +18,20 @@ model User {
   email           String    @unique
   passwordHash    String
   emailVerifiedAt DateTime?
+  isSiteAdmin     Boolean   @default(false)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  mfaMethods    MfaMethod[]
-  recoveryCodes RecoveryCode[]
-  sessions      Session[]
-  memberships   Membership[]
-  invitesSent   Invite[]       @relation("InvitedBy")
-  accounts      Account[]
-  importBatches ImportBatch[]
-  auditLogs     AuditLog[]
-  categoryRules CategoryRule[]
+  mfaMethods      MfaMethod[]
+  recoveryCodes   RecoveryCode[]
+  sessions        Session[]
+  memberships     Membership[]
+  invitesSent     Invite[]         @relation("InvitedBy")
+  accounts        Account[]
+  importBatches   ImportBatch[]
+  auditLogs       AuditLog[]
+  categoryRules   CategoryRule[]
+  signupInvites   SignupInvite[]
 }
 
 model Session {
@@ -395,6 +397,38 @@ model ColumnMapping {
   household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
 
   @@unique([householdId, sourceFingerprint])
+}
+
+// ─── Platform access (Epic 8) ─────────────────────────────────────────────────
+
+enum RegistrationMode {
+  admin_invite
+  beta_invite
+  open
+}
+
+model RegistrationPolicy {
+  id        Int              @id @default(1)
+  mode      RegistrationMode @default(admin_invite)
+  updatedAt DateTime         @updatedAt
+  updatedBy String?
+}
+
+model SignupInvite {
+  id                  String    @id @default(cuid())
+  email               String
+  token               String    @unique
+  expiresAt           DateTime
+  usedAt              DateTime?
+  issuedByAdminId     String
+  // Set only in beta_invite mode when a household issues the invite
+  issuedByHouseholdId String?
+  createdAt           DateTime  @default(now())
+
+  issuedByAdmin User @relation(fields: [issuedByAdminId], references: [id])
+
+  @@index([email])
+  @@index([token])
 }
 
 // ─── Audit ────────────────────────────────────────────────────────────────────
