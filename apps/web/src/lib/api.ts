@@ -1,5 +1,8 @@
 // Thin fetch wrapper — all API calls go through here.
 // The Vite proxy forwards /api/* → http://localhost:3000/* in dev.
+//
+// On 401: automatically refreshes the access token once and retries.
+// On refresh failure: clears stored tokens and redirects to /login.
 
 const BASE = '/api';
 
@@ -17,7 +20,27 @@ export class ApiException extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+// Collapses concurrent 401s into a single refresh call
+let refreshPromise: Promise<void> | null = null;
+
+async function doRefresh(): Promise<void> {
+  const rt = localStorage.getItem('refreshToken');
+  if (!rt) throw new Error('no refresh token');
+
+  const res = await fetch(`${BASE}/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken: rt }),
+  });
+
+  if (!res.ok) throw new Error('refresh failed');
+
+  const body = (await res.json()) as { data: { accessToken: string; refreshToken: string } };
+  localStorage.setItem('accessToken', body.data.accessToken);
+  localStorage.setItem('refreshToken', body.data.refreshToken);
+}
+
+async function request<T>(path: string, init?: RequestInit, allowRefresh = true): Promise<T> {
   const token = localStorage.getItem('accessToken');
   const res = await fetch(`${BASE}${path}`, {
     ...init,
@@ -27,6 +50,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
+
+  if (res.status === 401 && allowRefresh) {
+    try {
+      // Deduplicate: if another request already started a refresh, wait for it
+      if (!refreshPromise) {
+        refreshPromise = doRefresh().finally(() => { refreshPromise = null; });
+      }
+      await refreshPromise;
+      // Retry once with the new token now in localStorage
+      return request<T>(path, init, false);
+    } catch {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      window.location.href = '/login';
+      throw new ApiException('UNAUTHORIZED', 'Session expired. Please log in again.');
+    }
+  }
 
   const body = (await res.json()) as ApiResult<T>;
 

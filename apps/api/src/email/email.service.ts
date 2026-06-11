@@ -55,6 +55,24 @@ export class EmailService {
     });
   }
 
+  async sendHouseholdInvite(
+    to: string,
+    inviterName: string,
+    householdName: string,
+    role: string,
+    acceptUrl: string,
+  ): Promise<void> {
+    const roleLabel = role === 'owner' ? 'co-owner' : 'member';
+    await this.send({
+      to,
+      subject: `${inviterName} invited you to join ${householdName}`,
+      text: `${inviterName} has invited you to join "${householdName}" as a ${roleLabel}.\n\nAccept the invitation:\n${acceptUrl}\n\nThis invite expires in 7 days.`,
+      html: `<p>${inviterName} has invited you to join <strong>${householdName}</strong> as a ${roleLabel}.</p>
+             <p><a href="${acceptUrl}">Accept invitation</a></p>
+             <p>This invite expires in 7 days.</p>`,
+    });
+  }
+
   async sendMfaCode(to: string, code: string): Promise<void> {
     await this.send({
       to,

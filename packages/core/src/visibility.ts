@@ -9,7 +9,8 @@ export type VisibilityKind = 'shared' | 'private' | 'balance_only';
 
 export interface ScopeAccount {
   id: string;
-  ownerUserId: string;
+  // null when the original owner was removed from the household (E1.4 detach)
+  ownerUserId: string | null;
   visibility: VisibilityKind;
 }
 

@@ -17,6 +17,7 @@ model User {
   id              String    @id @default(cuid())
   email           String    @unique
   passwordHash    String
+  name            String
   emailVerifiedAt DateTime?
   isSiteAdmin     Boolean   @default(false)
   createdAt       DateTime  @default(now())
@@ -127,13 +128,14 @@ enum MemberStatus {
 }
 
 model Membership {
-  id          String       @id @default(cuid())
-  householdId String
-  userId      String
-  role        MemberRole
-  status      MemberStatus @default(active)
-  joinedAt    DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id              String       @id @default(cuid())
+  householdId     String
+  userId          String
+  role            MemberRole
+  isPrimaryOwner  Boolean      @default(false)
+  status          MemberStatus @default(active)
+  joinedAt        DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
   household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -194,7 +196,7 @@ enum Visibility {
 model Account {
   id           String        @id @default(cuid())
   householdId  String
-  ownerUserId  String
+  ownerUserId  String?
   name         String
   type         AccountType
   source       AccountSource @default(manual)
@@ -208,7 +210,7 @@ model Account {
   updatedAt    DateTime      @updatedAt
 
   household     Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  owner         User          @relation(fields: [ownerUserId], references: [id])
+  owner         User?         @relation(fields: [ownerUserId], references: [id])
   transactions  Transaction[]
   importBatches ImportBatch[]
 
