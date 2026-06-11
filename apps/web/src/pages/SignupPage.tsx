@@ -1,10 +1,13 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Button, FormField, Card, CardHeader, CardTitle } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
 import { AuthLayout } from '../components/AuthLayout';
 
 export function SignupPage() {
+  const [searchParams] = useSearchParams();
+  const inviteToken = searchParams.get('invite') ?? undefined;
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -17,7 +20,7 @@ export function SignupPage() {
     setError('');
     setLoading(true);
     try {
-      await api.post('/auth/signup', { email, password });
+      await api.post('/auth/signup', { email, password, inviteToken });
       setDone(true);
     } catch (err) {
       setError(err instanceof ApiException ? err.message : 'Signup failed. Please try again.');
@@ -53,6 +56,11 @@ export function SignupPage() {
         <CardHeader>
           <CardTitle>Create account</CardTitle>
         </CardHeader>
+        {!inviteToken && (
+          <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 mb-4">
+            This is an invitation-only service. You need a valid invite link to create an account.
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <FormField
             label="Email"

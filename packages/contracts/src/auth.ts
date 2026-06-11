@@ -4,10 +4,8 @@ import { z } from 'zod';
 
 export const SignupBodySchema = z.object({
   email: z.string().email(),
-  password: z
-    .string()
-    .min(12, 'Password must be at least 12 characters')
-    .max(128),
+  password: z.string().min(12, 'Password must be at least 12 characters').max(128),
+  inviteToken: z.string().optional(),
 });
 
 export type SignupBody = z.infer<typeof SignupBodySchema>;
