@@ -10,7 +10,12 @@ export class EmailService {
   constructor() {
     const key = process.env.RESEND_API_KEY;
     this.resend = key ? new Resend(key) : null;
-    this.from = `"${process.env.PUBLIC_APP_NAME ?? 'PFM'}" <noreply@${process.env.EMAIL_DOMAIN ?? 'pfm.local'}>`;
+
+    // resend.dev is Resend's sandbox domain — only onboarding@resend.dev is a valid sender there.
+    // For any other domain the address must belong to a verified domain in your Resend account.
+    const domain = process.env.EMAIL_DOMAIN ?? 'pfm.local';
+    const localPart = domain === 'resend.dev' ? 'onboarding' : 'noreply';
+    this.from = `"${process.env.PUBLIC_APP_NAME ?? 'PFM'}" <${localPart}@${domain}>`;
 
     if (!key) {
       this.logger.warn('RESEND_API_KEY not set — emails will only be logged (dev mode)');

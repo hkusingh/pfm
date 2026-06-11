@@ -28,9 +28,16 @@ export function InvitesPage() {
     queryFn: () => api.get<Invite[]>('/admin/signup-invites'),
   });
 
+  const [inviteUrl, setInviteUrl] = useState('');
+
   const create = useMutation({
-    mutationFn: (email: string) => api.post<{ id: string }>('/admin/signup-invites', { email }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'invites'] }); setEmail(''); setFormError(''); },
+    mutationFn: (email: string) => api.post<{ id: string; signupUrl: string }>('/admin/signup-invites', { email }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['admin', 'invites'] });
+      setEmail('');
+      setFormError('');
+      setInviteUrl(res.signupUrl);
+    },
     onError: (err) => setFormError(err instanceof ApiException ? err.message : 'Failed to send invite'),
   });
 
@@ -70,7 +77,22 @@ export function InvitesPage() {
           <Button type="submit" loading={create.isPending}>Send invite</Button>
         </form>
         {formError && <p className="mt-2 text-sm text-red-600">{formError}</p>}
-        {create.isSuccess && <p className="mt-2 text-sm text-green-600">Invite sent!</p>}
+        {create.isSuccess && inviteUrl && (
+          <div className="mt-3 rounded-lg bg-green-50 border border-green-200 p-3 space-y-1">
+            <p className="text-sm font-medium text-green-800">Invite created — share this link:</p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-xs text-green-700 break-all">{inviteUrl}</code>
+              <button
+                type="button"
+                className="shrink-0 text-xs text-green-700 underline hover:text-green-900"
+                onClick={() => navigator.clipboard.writeText(inviteUrl)}
+              >
+                Copy
+              </button>
+            </div>
+            <p className="text-xs text-green-600">An invite email was also attempted — check server logs if it didn't arrive.</p>
+          </div>
+        )}
       </Card>
 
       {/* Invite list */}

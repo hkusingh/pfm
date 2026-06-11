@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { prisma } from '@pfm/db';
 import type { RegistrationMode } from '@pfm/db';
@@ -8,6 +8,7 @@ const INVITE_TTL_DAYS = 7;
 
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
   constructor(private readonly email: EmailService) {}
 
   // ── Registration policy ────────────────────────────────────────────────────
@@ -41,7 +42,7 @@ export class AdminService {
     });
   }
 
-  async createInvite(email: string, adminId: string): Promise<{ id: string; email: string }> {
+  async createInvite(email: string, adminId: string): Promise<{ id: string; email: string; signupUrl: string }> {
     // One active (unused, unexpired) invite per email at a time
     const existing = await prisma.signupInvite.findFirst({
       where: { email, usedAt: null, expiresAt: { gt: new Date() } },
@@ -58,9 +59,14 @@ export class AdminService {
     });
 
     const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
-    await this.email.sendSignupInvite(email, `${webOrigin}/signup?invite=${token}`);
+    const signupUrl = `${webOrigin}/signup?invite=${token}`;
 
-    return { id: invite.id, email: invite.email };
+    // Email is best-effort — invite is still valid if delivery fails (e.g. unverified sender domain)
+    this.email.sendSignupInvite(email, signupUrl).catch((err: unknown) => {
+      this.logger.warn(`Invite email to ${email} failed: ${String(err)} — share the URL manually: ${signupUrl}`);
+    });
+
+    return { id: invite.id, email: invite.email, signupUrl };
   }
 
   async revokeInvite(id: string): Promise<void> {
