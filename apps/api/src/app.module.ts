@@ -9,6 +9,7 @@ import { PrivacyModule } from './privacy/privacy.module';
 import { AdminModule } from './admin/admin.module';
 import { HouseholdModule } from './household/household.module';
 import { AccountModule } from './account/account.module';
+import { CategoryModule } from './category/category.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { AccountModule } from './account/account.module';
     AdminModule,
     HouseholdModule,
     AccountModule,
+    CategoryModule,
   ],
   controllers: [AppController],
   providers: [

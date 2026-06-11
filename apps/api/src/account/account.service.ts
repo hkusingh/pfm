@@ -7,6 +7,7 @@ import {
 import { prisma } from '@pfm/db';
 import { buildScope, canViewLineItems } from '@pfm/core';
 import { normalizeMerchant, computeDedupHash } from '@pfm/core';
+import { CategoryService } from '../category/category.service';
 import type {
   CreateAccountBody,
   UpdateAccountBody,
@@ -52,6 +53,8 @@ function toAccountResponse(a: AccountRow): AccountResponse {
 
 @Injectable()
 export class AccountService {
+  constructor(private readonly categories: CategoryService) {}
+
   // ─── Require helpers ────────────────────────────────────────────────────────
 
   private async requireAccount(accountId: string, householdId: string) {
@@ -220,6 +223,11 @@ export class AccountService {
 
     const currency = body.currency ?? account.currency;
 
+    // Auto-categorize via rules when no explicit categoryId supplied
+    const categoryId =
+      body.categoryId ??
+      (await this.categories.applyRules(account.householdId, body.merchant));
+
     const [tx] = await prisma.$transaction([
       prisma.transaction.create({
         data: {
@@ -229,7 +237,7 @@ export class AccountService {
           merchantNormalized: merchantNormalized || null,
           amountMinor: body.amountMinor,
           currency,
-          categoryId: body.categoryId ?? null,
+          categoryId,
           dedupHash,
         },
       }),

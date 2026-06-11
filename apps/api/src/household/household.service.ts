@@ -18,10 +18,14 @@ import type {
   MemberResponse,
 } from '@pfm/contracts';
 import { EmailService } from '../email/email.service';
+import { CategoryService } from '../category/category.service';
 
 @Injectable()
 export class HouseholdService {
-  constructor(private readonly email: EmailService) {}
+  constructor(
+    private readonly email: EmailService,
+    private readonly categories: CategoryService,
+  ) {}
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -87,6 +91,9 @@ export class HouseholdService {
       });
       return h;
     });
+
+    // Seed default categories outside the transaction so Prisma client doesn't deadlock
+    await this.categories.seedDefaults(household.id);
 
     return this.formatHousehold(household);
   }

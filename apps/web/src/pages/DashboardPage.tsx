@@ -31,6 +31,7 @@ export function DashboardPage() {
   const navItems = [
     { label: 'Dashboard', href: '/dashboard', active: true },
     { label: 'Accounts', href: '/accounts', active: false },
+    { label: 'Categories', href: '/categories', active: false },
     { label: 'Household', href: '/settings/household', active: false },
     ...(me?.isSiteAdmin ? [{ label: 'Admin', href: '/admin', active: false }] : []),
   ];

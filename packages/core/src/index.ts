@@ -8,3 +8,4 @@
 //         period / date helpers
 export * from './visibility';
 export * from './dedup';
+export * from './default-categories';
