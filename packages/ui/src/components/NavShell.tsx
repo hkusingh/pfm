@@ -99,18 +99,18 @@ function SidebarContent({ navItems, userEmail, appName, onSignOut }: Omit<NavShe
         ))}
       </nav>
 
-      {/* User footer */}
-      {userEmail && (
+      {/* User footer — always shown when onSignOut is provided */}
+      {onSignOut && (
         <div className="flex-shrink-0 px-4 py-3 border-t border-gray-200">
-          <p className="text-xs text-gray-500 truncate">{userEmail}</p>
-          {onSignOut && (
-            <button
-              onClick={onSignOut}
-              className="mt-1 text-xs text-gray-500 hover:text-gray-900 transition-colors"
-            >
-              Sign out
-            </button>
+          {userEmail && (
+            <p className="text-xs text-gray-500 truncate mb-1">{userEmail}</p>
           )}
+          <button
+            onClick={onSignOut}
+            className="text-xs font-medium text-gray-500 hover:text-gray-900 transition-colors"
+          >
+            Sign out
+          </button>
         </div>
       )}
     </>

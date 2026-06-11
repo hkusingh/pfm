@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, Button } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
+import { AuthLayout } from '../components/AuthLayout';
 
 export function VerifyEmailPage() {
   const [params] = useSearchParams();
@@ -11,13 +12,8 @@ export function VerifyEmailPage() {
 
   useEffect(() => {
     const token = params.get('token');
-    if (!token) {
-      setStatus('error');
-      setMessage('Missing verification token.');
-      return;
-    }
-    api
-      .post('/auth/verify-email', { token })
+    if (!token) { setStatus('error'); setMessage('Missing verification token.'); return; }
+    api.post('/auth/verify-email', { token })
       .then(() => setStatus('success'))
       .catch((err) => {
         setStatus('error');
@@ -26,11 +22,9 @@ export function VerifyEmailPage() {
   }, [params]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Email verification</CardTitle>
-        </CardHeader>
+    <AuthLayout>
+      <Card>
+        <CardHeader><CardTitle>Email verification</CardTitle></CardHeader>
         <div className="space-y-4">
           {status === 'loading' && <p className="text-sm text-gray-600">Verifying…</p>}
           {status === 'success' && (
@@ -38,9 +32,7 @@ export function VerifyEmailPage() {
               <p className="text-sm text-gray-600">
                 Your email is verified. Sign in to set up two-factor authentication.
               </p>
-              <Button className="w-full" onClick={() => navigate('/login')}>
-                Sign in
-              </Button>
+              <Button className="w-full" onClick={() => navigate('/login')}>Sign in</Button>
             </>
           )}
           {status === 'error' && (
@@ -53,6 +45,6 @@ export function VerifyEmailPage() {
           )}
         </div>
       </Card>
-    </div>
+    </AuthLayout>
   );
 }

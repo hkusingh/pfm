@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Button, FormField, Card, CardHeader, CardTitle } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { AuthLayout } from '../components/AuthLayout';
 
 export function LoginPage() {
   const [email, setEmail] = useState('');
@@ -25,7 +26,6 @@ export function LoginPage() {
       if (res.status === 'mfa_required') {
         navigate('/mfa/verify', { state: { mfaChallengeToken: res.mfaChallengeToken } });
       } else {
-        // status: 'ok' means no MFA enrolled yet — enforce setup before app access
         setTokens(res.accessToken, res.refreshToken);
         navigate('/mfa/setup');
       }
@@ -37,8 +37,8 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <Card className="w-full max-w-md">
+    <AuthLayout>
+      <Card>
         <CardHeader>
           <CardTitle>Sign in</CardTitle>
         </CardHeader>
@@ -75,6 +75,6 @@ export function LoginPage() {
           </Link>
         </div>
       </Card>
-    </div>
+    </AuthLayout>
   );
 }

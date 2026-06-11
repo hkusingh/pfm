@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button, FormField, Card, CardHeader, CardTitle } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
+import { AuthLayout } from '../components/AuthLayout';
 
 export function SignupPage() {
   const [email, setEmail] = useState('');
@@ -27,8 +28,8 @@ export function SignupPage() {
 
   if (done) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <Card className="w-full max-w-md">
+      <AuthLayout>
+        <Card>
           <CardHeader>
             <CardTitle>Check your email</CardTitle>
           </CardHeader>
@@ -42,13 +43,13 @@ export function SignupPage() {
             </Button>
           </div>
         </Card>
-      </div>
+      </AuthLayout>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <Card className="w-full max-w-md">
+    <AuthLayout>
+      <Card>
         <CardHeader>
           <CardTitle>Create account</CardTitle>
         </CardHeader>
@@ -84,6 +85,6 @@ export function SignupPage() {
           </Link>
         </p>
       </Card>
-    </div>
+    </AuthLayout>
   );
 }

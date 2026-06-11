@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, Button, FormField } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { AuthLayout } from '../components/AuthLayout';
 
 export function MfaVerifyPage() {
   const navigate = useNavigate();
@@ -38,29 +39,20 @@ export function MfaVerifyPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Two-factor authentication</CardTitle>
-        </CardHeader>
+    <AuthLayout>
+      <Card>
+        <CardHeader><CardTitle>Two-factor authentication</CardTitle></CardHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <p className="text-sm text-gray-600">Enter the 6-digit code from your authenticator.</p>
           <FormField
-            label="Code"
-            name="code"
-            value={code}
+            label="Code" name="code" value={code}
             onChange={(e) => setCode(e.target.value)}
-            required
-            autoComplete="one-time-code"
-            inputMode="numeric"
-            maxLength={6}
+            required autoComplete="one-time-code" inputMode="numeric" maxLength={6}
           />
           {error && <p className="text-sm text-red-600">{error}</p>}
-          <Button type="submit" className="w-full" loading={loading}>
-            Verify
-          </Button>
+          <Button type="submit" className="w-full" loading={loading}>Verify</Button>
         </form>
       </Card>
-    </div>
+    </AuthLayout>
   );
 }

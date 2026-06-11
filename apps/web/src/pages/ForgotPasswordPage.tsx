@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, FormField, Card, CardHeader, CardTitle } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
+import { AuthLayout } from '../components/AuthLayout';
 
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -25,35 +26,32 @@ export function ForgotPasswordPage() {
 
   if (done) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <Card className="w-full max-w-md">
+      <AuthLayout>
+        <Card>
           <CardHeader>
             <CardTitle>Check your email</CardTitle>
           </CardHeader>
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
-              If <strong>{email}</strong> is registered, we sent a password reset link. Check your
-              inbox — it expires in 1 hour.
+              If <strong>{email}</strong> is registered, we sent a password reset link. It expires
+              in 1 hour.
             </p>
             <p className="text-sm text-gray-500">
               Didn&apos;t get it? Check your spam folder or{' '}
-              <button
-                className="text-blue-600 hover:underline"
-                onClick={() => setDone(false)}
-              >
+              <button className="text-blue-600 hover:underline" onClick={() => setDone(false)}>
                 try again
               </button>
               .
             </p>
           </div>
         </Card>
-      </div>
+      </AuthLayout>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <Card className="w-full max-w-md">
+    <AuthLayout>
+      <Card>
         <CardHeader>
           <CardTitle>Forgot password</CardTitle>
         </CardHeader>
@@ -75,12 +73,12 @@ export function ForgotPasswordPage() {
             Send reset link
           </Button>
         </form>
-        <p className="mt-4 text-sm text-center text-gray-600">
+        <p className="mt-4 text-sm text-center">
           <Link to="/login" className="text-blue-600 hover:underline">
             Back to sign in
           </Link>
         </p>
       </Card>
-    </div>
+    </AuthLayout>
   );
 }
