@@ -136,12 +136,13 @@ export class AuthService {
     id: string;
     email: string;
     emailVerifiedAt: Date | null;
+    isSiteAdmin: boolean;
     createdAt: Date;
     mfaMethods: { type: string; isPrimary: boolean; confirmedAt: Date | null }[];
   }> {
     const user = await prisma.user.findUniqueOrThrow({
       where: { id: userId },
-      select: { id: true, email: true, emailVerifiedAt: true, createdAt: true },
+      select: { id: true, email: true, emailVerifiedAt: true, isSiteAdmin: true, createdAt: true },
     });
     const mfaMethods = await prisma.mfaMethod.findMany({
       where: { userId, confirmedAt: { not: null } },

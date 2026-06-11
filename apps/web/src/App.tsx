@@ -8,6 +8,10 @@ import { MfaVerifyPage } from './pages/MfaVerifyPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { AdminLayout } from './components/AdminLayout';
+import { InvitesPage } from './pages/admin/InvitesPage';
+import { UsersPage } from './pages/admin/UsersPage';
+import { PolicyPage } from './pages/admin/PolicyPage';
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -40,6 +44,13 @@ export function App() {
           {/* Protected */}
           <Route element={<ProtectedRoute />}>
             <Route path="/dashboard" element={<DashboardPage />} />
+            {/* Admin section — AdminLayout enforces isSiteAdmin */}
+            <Route path="/admin" element={<AdminLayout />}>
+              <Route index element={<Navigate to="/admin/invites" replace />} />
+              <Route path="invites" element={<InvitesPage />} />
+              <Route path="users" element={<UsersPage />} />
+              <Route path="policy" element={<PolicyPage />} />
+            </Route>
           </Route>
 
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
