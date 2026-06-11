@@ -2,6 +2,10 @@
 
 Phase 1 is built by multiple people in parallel. This guide defines how we branch, work independently, and merge cleanly. It pairs with [`docs/phase1-epics-and-stories.md`](./docs/phase1-epics-and-stories.md).
 
+## Getting set up
+
+New to the repo? Run `./scripts/setup-dev.sh` then `pnpm dev`. See [`docs/development-setup.md`](./docs/development-setup.md) for prerequisites, the `AUTH_GATE` dev flag, the dev/test databases, and troubleshooting.
+
 ## Branch strategy
 
 - `main` — protected; always green; releasable.

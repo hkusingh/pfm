@@ -96,6 +96,8 @@ Requirements use IDs (e.g. `H-1`). Each feature lists user stories and acceptanc
   - AC: User can set a primary and a backup method.
   - AC: Recovery codes are generated and shown once after setup.
 - **S-3 Session security.** Sessions expire after inactivity; re-auth required on expiry.
+
+> **Implementation note — dev gate (`AUTH_GATE`).** The enforcement of invite-only signup (S-6), email verification (S-1), and mandatory MFA (S-2) is controlled by a single server flag, `AUTH_GATE`. In all deployed and CI environments it is **on** (these requirements hold in full). It may be turned **off in local development only**, so engineers can create accounts and reach the app without invites, email, or MFA while working against a local database. The flag toggles whether enforcement runs; it does not remove the requirements, which remain mandatory in production.
 - **S-4 Data protection.** Financial data encrypted in transit and at rest; access scoped to the authenticated user's permissions.
 - **S-5 Privacy controls.** User can export their data and request account/data deletion.
 

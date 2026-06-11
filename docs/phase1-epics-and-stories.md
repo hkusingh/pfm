@@ -227,6 +227,7 @@ flowchart TD
 - **E8.1 — Registration policy & gated signup.** *(PRD: S-6 · Size: M)*
   - AC: Global `RegistrationPolicy.mode` (`admin_invite` | `beta_invite` | `open`); Phase 1 default `admin_invite`.
   - AC: In `admin_invite`, the signup endpoint requires a valid, unexpired `SignupInvite` for that email, consumed on success; enforced **server-side**; rate-limited. No invite → no account.
+  - **Dev gate:** invite/email/MFA enforcement sits behind the `AUTH_GATE` flag (off for local dev, on in prod/CI). The check is always present; the flag only toggles whether it runs. See PRD §3.2 implementation note.
 - **E8.2 — Site-admin role & bootstrap.** *(Size: S)*
   - AC: `User.isSiteAdmin`; admin-only guard; **first site admin seeded** (`hksingh@gmail.com`) via migration/seed (no admin exists to invite the first one).
 - **E8.3 — Admin area (guarded `/admin`, not a separate app).** *(Size: M)*

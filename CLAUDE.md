@@ -32,22 +32,32 @@ These are correctness and safety rules. A change that violates one is wrong even
    returns account/transaction data ships with a cross-member **leakage test**.
 2. **No Plaid / no bank credentials in Phase 1.** Live aggregation is Phase 2. Never store bank login
    credentials anywhere, in any phase. The data model leaves seams for Plaid but we do not build it now.
-3. **MFA cannot be disabled.** Enrollment is enforced during onboarding before app access. Methods
-   (TOTP, email code) can change; the requirement cannot be turned off.
+3. **MFA cannot be disabled (in any real environment).** Enrollment is enforced during onboarding
+   before app access; methods (TOTP, email code) can change, the requirement cannot be turned off.
+   *The single `AUTH_GATE` flag (see guardrail 9) may relax this **for local development only** — it
+   must be `true` in every deployed/CI environment. Never remove the enforcement code.*
 4. **Encryption + least privilege.** Financial data encrypted in transit and at rest; uploaded
    statement files stored encrypted; access scoped to the authenticated user's permissions.
 5. **Audit sensitive actions.** Member/role changes, visibility changes, and data exports write an
    audit record.
 6. **Money math is integer-safe.** Store and compute monetary amounts in **minor units (integer
    cents)** with an explicit currency. Never use floats for money.
-7. **Signup is invitation-only.** Phase 1 runs `RegistrationPolicy = admin_invite`: no account is
-   created without a valid `SignupInvite`, enforced **server-side** at the signup endpoint (not just
-   hidden in UI). Site-admin endpoints require `isSiteAdmin` + MFA. (Epic 8.)
+7. **Signup is invitation-only (in any real environment).** Phase 1 runs `RegistrationPolicy =
+   admin_invite`: no account is created without a valid `SignupInvite`, enforced **server-side** at the
+   signup endpoint (not just hidden in UI). Site-admin endpoints require `isSiteAdmin` + MFA. (Epic 8.)
+   *Relaxed by `AUTH_GATE=false` for local dev only — see guardrail 9.*
 8. **AI is optional and BYOK.** AI uses the household's **own** provider key; the app must work fully
    with no key (fall back to rules/uncategorized). Never store a key in plaintext (KMS envelope
    encryption), never return or log it, never send transaction data to a provider without recorded
    consent, and send only the normalized merchant (+ amount) — never account numbers or identities.
    (Epic 9.)
+9. **`AUTH_GATE` is a dev-only convenience, not a real toggle.** A single flag
+   (`apps/api/src/common/feature-flags.ts`) gates the auth friction: `AUTH_GATE=true` enforces
+   invite-only signup, email verification, and mandatory MFA; `AUTH_GATE=false` disables all three so
+   developers can sign up and reach the app instantly against a local DB. **It must be `true` in every
+   deployed and CI environment** — the checked-in `.env.example` defaults to `true`; only the local
+   `.env` sets `false`. The flag selects *whether* the rules run; it never deletes them. Do not add new
+   `AUTH_GATE` branches that change behavior beyond enable/disable of these three checks.
 
 If a task seems to require breaking one of these, stop and flag it.
 
@@ -122,9 +132,9 @@ pnpm --filter @pfm/db migrate:test   # apply migrations to the pfm_test DB
 pnpm --filter @pfm/db seed           # seed default categories etc.
 ```
 
-A first-time contributor should be able to get a working local stack (Postgres via Docker Compose; or a
-Neon dev branch) with `docker compose up -d && pnpm install && pnpm --filter @pfm/db migrate:dev && pnpm
-dev`.
+First-time setup is automated: **`./scripts/setup-dev.sh`** (checks prereqs, writes `.env` with
+generated secrets + `AUTH_GATE=false`, starts Postgres, installs, migrates dev+test DBs, seeds), then
+`pnpm dev`. Full guide + troubleshooting: [`docs/development-setup.md`](./docs/development-setup.md).
 
 ## 6. How to work
 

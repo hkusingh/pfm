@@ -43,7 +43,10 @@ Invitation-only, limited-user test release. **Invitation-only access** (site-adm
 
 ## Development
 
-Phase 1 is broken into **parallel-workable epics** — see [phase1-epics-and-stories.md](./docs/phase1-epics-and-stories.md) and [CONTRIBUTING.md](./CONTRIBUTING.md) for the branch/merge strategy. Source code will live under `/src` (or per-service folders) as it is built.
+**Get set up locally:** run `./scripts/setup-dev.sh`, then `pnpm dev`. Full instructions, the
+`AUTH_GATE` dev flag, and troubleshooting are in [docs/development-setup.md](./docs/development-setup.md).
+
+Phase 1 is broken into **parallel-workable epics** — see [phase1-epics-and-stories.md](./docs/phase1-epics-and-stories.md) and [CONTRIBUTING.md](./CONTRIBUTING.md) for the branch/merge strategy. The codebase is a TypeScript monorepo (`apps/*`, `packages/*`).
 
 ---
 

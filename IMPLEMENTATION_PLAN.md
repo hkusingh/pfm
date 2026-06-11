@@ -268,6 +268,8 @@ concrete work and the acceptance bar. Sizes (S/M/L) carry over from the epic doc
 **E0.4 Mandatory MFA** *(L)* — PRD: S-2
 - TOTP (`otplib`) + email-code methods; primary + backup; recovery codes shown once; enrollment
   enforced in onboarding before app access; rate-limit/lockout on failures; recovery via backup/codes.
+- Enforcement runs behind `AUTH_GATE` (the `MfaEnrolledGuard` short-circuits when the gate is off, for
+  local dev). The guard and enrollment code always exist; the gate only toggles whether they apply.
 - **Done when:** unauthenticated-but-unenrolled users are routed to MFA setup; cannot reach app data
   without it; cannot disable MFA.
 
@@ -395,7 +397,9 @@ The mechanism is a policy toggle that later opens to beta (household-to-househol
 - **E8.1 Registration policy + gated signup** ✅ — `RegistrationPolicy.mode` singleton in DB
   (`admin_invite` | `beta_invite` | `open`, default `admin_invite`). Signup endpoint enforces the
   active policy server-side; invite token consumed on success. `SignupInvite` model with
-  `issuedByAdminId`, `issuedByHouseholdId?`, `expiresAt`, `usedAt`.
+  `issuedByAdminId`, `issuedByHouseholdId?`, `expiresAt`, `usedAt`. Enforcement (invite check + email
+  verification) is behind `AUTH_GATE`: off in local dev → signup skips the invite/policy check and
+  auto-verifies email. Always-on code; gate only toggles it. **Must be on in prod/CI.**
 - **E8.2 Site-admin role + bootstrap** ✅ — `User.isSiteAdmin`; `SiteAdminGuard`; seed promotes
   `hksingh@gmail.com` to site admin on first run.
 - **E8.3 Admin area** ✅ — `/admin/*` (React, guarded by `AdminLayout` + `SiteAdminGuard`): invite
@@ -477,10 +481,21 @@ SMTP_URL=                                # email verification + MFA email codes
 STORAGE_DRIVER=local|gcs   GCS_BUCKET=   GOOGLE_APPLICATION_CREDENTIALS=   # statement-file storage
 KMS_KEY_RESOURCE=                        # GCP KMS key for BYOK AI envelope encryption (Epic 9)
 REGISTRATION_POLICY=admin_invite         # bootstrap default; persisted in RegistrationPolicy thereafter
+AUTH_GATE=true                           # true = enforce invite-only signup + email verify + MFA.
+                                         #   false = local dev only (frictionless). MUST be true in any
+                                         #   deployed/CI env. .env.example=true; local .env=false.
 PUBLIC_APP_NAME=PFM                      # the one place a user-facing product name lives (rename later)
 WEB_ORIGIN=                              # CORS allowlist
 PORT=                                     # server listens on $PORT (Cloud Run requirement)
 ```
+
+**Feature flags.** A single flag, `AUTH_GATE` (`apps/api/src/common/feature-flags.ts`), controls all
+auth friction so the app can be tested against a local DB without invites/email/MFA. `true` →
+invite-only signup (RegistrationPolicy + SignupInvite), email verification, and mandatory MFA all
+enforced; `false` → signup needs no invite, email auto-verifies, and the MFA guard short-circuits. The
+flag toggles *whether enforcement runs* — it never removes the rules — and **must be `true` in every
+deployed and CI environment** (the committed `.env.example` defaults to `true`; only the local `.env`
+sets `false`). It gates Epic 0.3 (auth/email verify), Epic 0.4 (MFA), and Epic 8 (invite-only signup).
 
 In production these are supplied by **GCP Secret Manager**, injected into the Cloud Run service — not
 committed anywhere. Locally they live in an uncommitted `.env`.
@@ -644,5 +659,5 @@ is one call.
 | E5 Transactions | Visibility-scoped list; recategorize + rule application; reserve-funded badge linkage. |
 | E6 Budgets | Amortization spreads correctly; reserve accrues/draws without spike; shortfall flagged; sub-budgets roll up. |
 | E7 Dashboard | Charts visibility-aware; household vs personal totals; reserve-funded segment on spending-over-time; **base-currency roll-ups exclude non-base accounts (no blending/conversion)**; period-comparison deltas correct for MoM/QoQ/YoY incl. period-boundary/year-ago resolution. |
-| E8 Access | Signup blocked without a valid invite in `admin_invite` (server-side); invite consumed once; expired/revoked rejected; admin endpoints reject non-site-admins; first admin seeded. |
+| E8 Access | **Run auth/access + MFA suites with `AUTH_GATE=true`.** Signup blocked without a valid invite in `admin_invite` (server-side); invite consumed once; expired/revoked rejected; admin endpoints reject non-site-admins; first admin seeded. Add one test asserting `AUTH_GATE=false` bypasses invite/MFA (so the dev path is intentional, not accidental). |
 | E9 BYOK AI | App works with no key (fallback); key never returned/logged; KMS round-trip; no data sent without consent; only normalized merchant leaves; confirmed suggestion writes a rule (no repeat LLM call). |
