@@ -153,6 +153,7 @@ export function CategoriesPage() {
 
   const navItems = [
     { label: 'Dashboard', href: '/dashboard', active: false },
+    { label: 'Transactions', href: '/transactions', active: false },
     { label: 'Accounts', href: '/accounts', active: false },
     { label: 'Categories', href: '/categories', active: true },
     { label: 'Household', href: '/settings/household', active: false },

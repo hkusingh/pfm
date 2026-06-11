@@ -12,6 +12,7 @@ import { CreateHouseholdPage } from './pages/CreateHouseholdPage';
 import { HouseholdSettingsPage } from './pages/HouseholdSettingsPage';
 import { AccountsPage } from './pages/AccountsPage';
 import { CategoriesPage } from './pages/CategoriesPage';
+import { TransactionsPage } from './pages/TransactionsPage';
 import { InviteAcceptPage } from './pages/InviteAcceptPage';
 import { AdminLayout } from './components/AdminLayout';
 import { InvitesPage } from './pages/admin/InvitesPage';
@@ -54,6 +55,7 @@ export function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/onboarding/household" element={<CreateHouseholdPage />} />
             <Route path="/accounts" element={<AccountsPage />} />
+            <Route path="/transactions" element={<TransactionsPage />} />
             <Route path="/categories" element={<CategoriesPage />} />
             <Route path="/settings/household" element={<HouseholdSettingsPage />} />
             {/* Admin section — AdminLayout enforces isSiteAdmin */}

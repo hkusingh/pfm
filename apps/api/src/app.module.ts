@@ -10,6 +10,7 @@ import { AdminModule } from './admin/admin.module';
 import { HouseholdModule } from './household/household.module';
 import { AccountModule } from './account/account.module';
 import { CategoryModule } from './category/category.module';
+import { TransactionModule } from './transaction/transaction.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { CategoryModule } from './category/category.module';
     HouseholdModule,
     AccountModule,
     CategoryModule,
+    TransactionModule,
   ],
   controllers: [AppController],
   providers: [

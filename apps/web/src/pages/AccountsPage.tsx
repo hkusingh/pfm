@@ -168,6 +168,7 @@ export function AccountsPage() {
 
   const navItems = [
     { label: 'Dashboard', href: '/dashboard', active: false },
+    { label: 'Transactions', href: '/transactions', active: false },
     { label: 'Accounts', href: '/accounts', active: true },
     { label: 'Categories', href: '/categories', active: false },
     { label: 'Household', href: '/settings/household', active: false },
