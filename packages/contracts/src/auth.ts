@@ -13,6 +13,8 @@ export type SignupBody = z.infer<typeof SignupBodySchema>;
 export const SignupResponseSchema = z.object({
   userId: z.string(),
   email: z.string().email(),
+  // Non-null when AUTH_GATE is off — email is auto-verified; client skips verify-email step
+  emailVerifiedAt: z.string().nullable(),
 });
 
 export type SignupResponse = z.infer<typeof SignupResponseSchema>;

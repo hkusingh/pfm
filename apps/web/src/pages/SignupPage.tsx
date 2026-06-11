@@ -20,8 +20,13 @@ export function SignupPage() {
     setError('');
     setLoading(true);
     try {
-      await api.post('/auth/signup', { email, password, inviteToken });
-      setDone(true);
+      const res = await api.post<{ emailVerifiedAt: string | null }>('/auth/signup', { email, password, inviteToken });
+      if (res.emailVerifiedAt) {
+        // AUTH_GATE off — email auto-verified, go straight to login
+        navigate('/login');
+      } else {
+        setDone(true);
+      }
     } catch (err) {
       setError(err instanceof ApiException ? err.message : 'Signup failed. Please try again.');
     } finally {

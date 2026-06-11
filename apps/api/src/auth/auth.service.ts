@@ -16,6 +16,7 @@ import type {
 } from '@pfm/contracts';
 import { TokenService } from './token.service';
 import { EmailService } from '../email/email.service';
+import { authGate } from '../common/feature-flags';
 
 @Injectable()
 export class AuthService {
@@ -24,20 +25,22 @@ export class AuthService {
     private readonly email: EmailService,
   ) {}
 
-  async signup(body: SignupBody & { inviteToken?: string }): Promise<{ userId: string; email: string }> {
-    // Enforce registration policy before touching the user table
-    const policy = await prisma.registrationPolicy.findUniqueOrThrow({ where: { id: 1 } });
+  async signup(body: SignupBody & { inviteToken?: string }): Promise<{ userId: string; email: string; emailVerifiedAt: Date | null }> {
+    if (authGate()) {
+      // Full enforcement: check registration policy and invite token
+      const policy = await prisma.registrationPolicy.findUniqueOrThrow({ where: { id: 1 } });
 
-    if (policy.mode === 'admin_invite') {
-      if (!body.inviteToken) {
-        throw new ForbiddenException('An invitation is required to create an account');
-      }
-      const invite = await prisma.signupInvite.findUnique({ where: { token: body.inviteToken } });
-      if (!invite || invite.usedAt || invite.expiresAt < new Date()) {
-        throw new ForbiddenException('Invite is invalid or has expired');
-      }
-      if (invite.email.toLowerCase() !== body.email.toLowerCase()) {
-        throw new ForbiddenException('This invite was issued for a different email address');
+      if (policy.mode === 'admin_invite') {
+        if (!body.inviteToken) {
+          throw new ForbiddenException('An invitation is required to create an account');
+        }
+        const invite = await prisma.signupInvite.findUnique({ where: { token: body.inviteToken } });
+        if (!invite || invite.usedAt || invite.expiresAt < new Date()) {
+          throw new ForbiddenException('Invite is invalid or has expired');
+        }
+        if (invite.email.toLowerCase() !== body.email.toLowerCase()) {
+          throw new ForbiddenException('This invite was issued for a different email address');
+        }
       }
     }
 
@@ -45,26 +48,34 @@ export class AuthService {
     if (existing) throw new ConflictException('Email already registered');
 
     const passwordHash = await argon2.hash(body.password);
+    const now = new Date();
     const user = await prisma.user.create({
-      data: { email: body.email, passwordHash },
+      data: {
+        email: body.email,
+        passwordHash,
+        // Gate off: auto-verify email so the user can log in immediately
+        emailVerifiedAt: authGate() ? undefined : now,
+      },
     });
 
     // Consume the invite so it can't be reused
-    if (body.inviteToken) {
+    if (authGate() && body.inviteToken) {
       await prisma.signupInvite.update({
         where: { token: body.inviteToken },
         data: { usedAt: new Date() },
       });
     }
 
-    const token = await this.createEmailVerificationToken(user.id);
-    const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
-    await this.email.sendEmailVerification(
-      user.email,
-      `${webOrigin}/verify-email?token=${token}`,
-    );
+    if (authGate()) {
+      const token = await this.createEmailVerificationToken(user.id);
+      const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
+      await this.email.sendEmailVerification(
+        user.email,
+        `${webOrigin}/verify-email?token=${token}`,
+      );
+    }
 
-    return { userId: user.id, email: user.email };
+    return { userId: user.id, email: user.email, emailVerifiedAt: user.emailVerifiedAt };
   }
 
   async login(body: LoginBody): Promise<LoginResponse> {
@@ -79,6 +90,12 @@ export class AuthService {
 
     if (!user || !passwordValid) {
       throw new UnauthorizedException('Invalid email or password');
+    }
+
+    // Gate off: skip all MFA — issue fully-verified tokens immediately
+    if (!authGate()) {
+      const pair = await this.tokens.issueTokenPair(user.id, user.email, true);
+      return { status: 'ok', mfaVerified: true, ...pair };
     }
 
     // Check trusted device — if valid, skip MFA challenge entirely
