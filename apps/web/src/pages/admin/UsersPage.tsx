@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle, Badge } from '@pfm/ui';
 import { api } from '../../lib/api';
 
@@ -11,10 +11,25 @@ type User = {
   _count: { memberships: number; mfaMethods: number };
 };
 
+type Me = { id: string; email: string; isSiteAdmin: boolean };
+
 export function UsersPage() {
+  const qc = useQueryClient();
+
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['admin', 'users'],
     queryFn: () => api.get<User[]>('/admin/users'),
+  });
+
+  const { data: me } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api.get<Me>('/auth/me'),
+  });
+
+  const toggleAdmin = useMutation({
+    mutationFn: ({ id, isSiteAdmin }: { id: string; isSiteAdmin: boolean }) =>
+      api.patch(`/admin/users/${id}/site-admin`, { isSiteAdmin }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'users'] }),
   });
 
   return (
@@ -37,7 +52,7 @@ export function UsersPage() {
                   <th className="px-6 py-2 font-medium text-gray-500">MFA</th>
                   <th className="px-6 py-2 font-medium text-gray-500">Households</th>
                   <th className="px-6 py-2 font-medium text-gray-500">Joined</th>
-                  <th className="px-6 py-2 font-medium text-gray-500">Role</th>
+                  <th className="px-6 py-2 font-medium text-gray-500">Site admin</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -59,7 +74,28 @@ export function UsersPage() {
                       {new Date(u.createdAt).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-3">
-                      {u.isSiteAdmin && <Badge variant="info">Site admin</Badge>}
+                      {u.isSiteAdmin ? (
+                        <div className="flex items-center gap-2">
+                          <Badge variant="info">Admin</Badge>
+                          {u.id !== me?.id && (
+                            <button
+                              className="text-xs text-red-500 hover:underline"
+                              onClick={() => toggleAdmin.mutate({ id: u.id, isSiteAdmin: false })}
+                              disabled={toggleAdmin.isPending}
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          className="text-xs text-blue-600 hover:underline"
+                          onClick={() => toggleAdmin.mutate({ id: u.id, isSiteAdmin: true })}
+                          disabled={toggleAdmin.isPending}
+                        >
+                          Make admin
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

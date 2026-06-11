@@ -30,6 +30,7 @@ export type EmailMfaSetupBody = z.infer<typeof EmailMfaSetupBodySchema>;
 export const MfaVerifyBodySchema = z.object({
   mfaChallengeToken: z.string().min(1),
   code: z.string().min(1),
+  trustDevice: z.boolean().optional(),
 });
 
 export type MfaVerifyBody = z.infer<typeof MfaVerifyBodySchema>;
@@ -38,6 +39,7 @@ export const MfaVerifyResponseSchema = z.object({
   accessToken: z.string(),
   refreshToken: z.string(),
   expiresIn: z.number(),
+  deviceToken: z.string().optional(),
 });
 
 export type MfaVerifyResponse = z.infer<typeof MfaVerifyResponseSchema>;

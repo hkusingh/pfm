@@ -98,4 +98,17 @@ export class AdminService {
       },
     });
   }
+
+  // ── Site-admin promotion / demotion ────────────────────────────────────────
+
+  async setSiteAdmin(targetId: string, actorId: string, isSiteAdmin: boolean): Promise<{ id: string; isSiteAdmin: boolean }> {
+    if (targetId === actorId && !isSiteAdmin) {
+      throw new BadRequestException('You cannot remove your own site-admin access');
+    }
+    return prisma.user.update({
+      where: { id: targetId },
+      data: { isSiteAdmin },
+      select: { id: true, isSiteAdmin: true },
+    });
+  }
 }

@@ -81,6 +81,16 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
+    // Check trusted device — if valid, skip MFA challenge entirely
+    if (body.deviceToken) {
+      const tokenHash = createHash('sha256').update(body.deviceToken).digest('hex');
+      const trusted = await prisma.trustedDevice.findUnique({ where: { tokenHash } });
+      if (trusted && trusted.userId === user.id && trusted.expiresAt > new Date()) {
+        const pair = await this.tokens.issueTokenPair(user.id, user.email, true);
+        return { status: 'ok', mfaVerified: true, ...pair };
+      }
+    }
+
     const primaryMfa = await prisma.mfaMethod.findFirst({
       where: { userId: user.id, isPrimary: true, confirmedAt: { not: null } },
     });
@@ -97,7 +107,7 @@ export class AuthService {
     // No confirmed MFA yet — issue tokens without mfaVerified flag.
     // The onboarding guard will enforce enrollment before they can reach app data.
     const pair = await this.tokens.issueTokenPair(user.id, user.email, false);
-    return { status: 'ok', ...pair };
+    return { status: 'ok', mfaVerified: false, ...pair };
   }
 
   async refresh(body: RefreshBody): Promise<RefreshResponse> {

@@ -18,14 +18,19 @@ export function LoginPage() {
     setError('');
     setLoading(true);
     try {
+      const deviceToken = localStorage.getItem('deviceToken') ?? undefined;
       const res = await api.post<
         | { status: 'mfa_required'; mfaChallengeToken: string }
-        | { status: 'ok'; accessToken: string; refreshToken: string }
-      >('/auth/login', { email, password });
+        | { status: 'ok'; accessToken: string; refreshToken: string; mfaVerified: boolean }
+      >('/auth/login', { email, password, deviceToken });
 
       if (res.status === 'mfa_required') {
         navigate('/mfa/verify', { state: { mfaChallengeToken: res.mfaChallengeToken } });
+      } else if (res.mfaVerified) {
+        setTokens(res.accessToken, res.refreshToken);
+        navigate('/dashboard');
       } else {
+        // No MFA enrolled yet — send to setup
         setTokens(res.accessToken, res.refreshToken);
         navigate('/mfa/setup');
       }

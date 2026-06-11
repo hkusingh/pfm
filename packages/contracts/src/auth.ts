@@ -30,6 +30,7 @@ export type VerifyEmailBody = z.infer<typeof VerifyEmailBodySchema>;
 export const LoginBodySchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+  deviceToken: z.string().optional(),
 });
 
 export type LoginBody = z.infer<typeof LoginBodySchema>;
@@ -47,6 +48,8 @@ export const LoginResponseSchema = z.discriminatedUnion('status', [
     accessToken: z.string(),
     refreshToken: z.string(),
     expiresIn: z.number(),
+    // true when MFA was verified (trusted device or full MFA flow); false when no MFA enrolled yet
+    mfaVerified: z.boolean(),
   }),
 ]);
 

@@ -4,9 +4,7 @@ import { NavShell, Card, CardHeader, CardTitle } from '@pfm/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
-type Me = { id: string; email: string; emailVerifiedAt: string | null };
-
-const navItems = [{ label: 'Dashboard', href: '/dashboard', active: true }];
+type Me = { id: string; email: string; emailVerifiedAt: string | null; isSiteAdmin: boolean };
 
 export function DashboardPage() {
   const { clearTokens } = useAuth();
@@ -16,6 +14,11 @@ export function DashboardPage() {
     queryKey: ['me'],
     queryFn: () => api.get<Me>('/auth/me'),
   });
+
+  const navItems = [
+    { label: 'Dashboard', href: '/dashboard', active: true },
+    ...(me?.isSiteAdmin ? [{ label: 'Admin', href: '/admin', active: false }] : []),
+  ];
 
   async function handleSignOut() {
     const refreshToken = localStorage.getItem('refreshToken');
