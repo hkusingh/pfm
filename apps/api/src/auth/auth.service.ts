@@ -125,6 +125,14 @@ export class AuthService {
     return { ...user, mfaMethods: mfaMethods.map((m) => ({ ...m, type: m.type as string })) };
   }
 
+  async logout(rawRefreshToken: string): Promise<void> {
+    const tokenHash = createHash('sha256').update(rawRefreshToken).digest('hex');
+    await prisma.session.updateMany({
+      where: { tokenHash, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
   async forgotPassword(email: string): Promise<void> {
     const user = await prisma.user.findUnique({ where: { email } });
     // Always respond the same way — don't reveal whether the email exists

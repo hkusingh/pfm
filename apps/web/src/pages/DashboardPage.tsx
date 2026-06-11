@@ -4,7 +4,7 @@ import { NavShell, Card, CardHeader, CardTitle } from '@pfm/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
-type Me = { id: string; email: string; emailVerified: boolean };
+type Me = { id: string; email: string; emailVerifiedAt: string | null };
 
 const navItems = [{ label: 'Dashboard', href: '/dashboard', active: true }];
 
@@ -17,7 +17,12 @@ export function DashboardPage() {
     queryFn: () => api.get<Me>('/auth/me'),
   });
 
-  function handleSignOut() {
+  async function handleSignOut() {
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (refreshToken) {
+      // Best-effort — revoke server-side session; don't block UI on failure
+      api.post('/auth/logout', { refreshToken }).catch(() => undefined);
+    }
     clearTokens();
     navigate('/login');
   }

@@ -49,6 +49,15 @@ export class AuthController {
     return ok({ verified: true });
   }
 
+  @Post('logout')
+  @HttpCode(200)
+  async logout(
+    @Body(new ZodValidationPipe(z.object({ refreshToken: z.string() }))) body: { refreshToken: string },
+  ) {
+    await this.auth.logout(body.refreshToken);
+    return ok({ loggedOut: true });
+  }
+
   @Public()
   @Post('forgot-password')
   @HttpCode(200)
