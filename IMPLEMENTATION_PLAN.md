@@ -13,30 +13,40 @@ acceptance bar for each.
 
 **Last updated:** 2026-06-10.
 
-**Done:** **Epic 0 — Foundation / Shared Kernel** is implemented (scaffolding, data model, auth, MFA,
-visibility helper, design system, API conventions). The monorepo, packages, and the visibility scope
-contract exist.
+**Done:**
+- **Epic 0 — Foundation / Shared Kernel** ✅ — monorepo scaffold, data model + migrations, auth
+  (signup/login/email verify/password reset), mandatory MFA (TOTP + recovery codes), visibility scope
+  helper, design system (`@pfm/ui`), API conventions (envelope, Zod validation, global guards), privacy
+  endpoints (data export + deletion). Merged to `main`.
+- **Epic 8 — Platform Access & Site Admin** ✅ (E8.1–E8.3) — invitation-only signup enforced
+  server-side, `RegistrationPolicy` toggle (`admin_invite` | `beta_invite` | `open`), site-admin role
+  + seed (`hksingh@gmail.com`), admin UI at `/admin` (invite management, user list, policy toggle).
+  Merged to `main`.
+- **E8.4 (pending — small):** `beta_invite` quota enforcement + `open` mode signup fallthrough.
+  Decision: **5 pending invites per household** (pending = `usedAt IS NULL AND expiresAt > now`;
+  slot reopens when invite is accepted or expires). Needs: `householdInviteQuota Int @default(5)` on
+  `RegistrationPolicy`; fix `AuthService.signup()` for `open`/`beta_invite` branches; expose quota in
+  policy API + UI. Household-side invite creation UI deferred to Epic 1.
 
-**Build right now (Wave 2 + the new platform stories):** these are unblocked and should proceed in
-parallel.
+**Build right now (Wave 2):** these are unblocked and should proceed in parallel.
 
-1. **Epic 1 — Household & Membership** (E1.1–E1.5).
-2. **Epic 2 — Accounts & Manual Entry** (E2.1–E2.4).
-3. **Epic 4 — Categories** (E4.1–E4.6).
-4. **NEW · Epic 8 — Platform Access & Site Admin** (E8.1–E8.4, §8 below) — invitation-only signup.
-   Build alongside Epic 1; it gates the signup path Epic 1 depends on. **Start E8.1/E8.2 early.**
-5. **NEW · Epic 9 — BYOK AI Categorization** (E9.1–E9.4, §9 below) — depends on E2 + E4; build in
-   Wave 3 next to Epic 3/5/6.
+1. **Epic 1 — Household & Membership** (E1.1–E1.5) — creates the household a user belongs to;
+   gates accounts, categories, and everything downstream.
+2. **Epic 2 — Accounts & Manual Entry** (E2.1–E2.4) — depends on E1.
+3. **Epic 4 — Categories** (E4.1–E4.6) — depends on E1.
+4. **E8.4** — small; can be slotted in alongside any Wave 2 story.
 
-**Then:** Wave 3 (Epics 3, 5, 6 + Epic 9) → Wave 4 (Epic 7).
+**Then:** Wave 3 (Epic 3 Import — high priority, Epic 5 Transactions, Epic 6 Budgets, Epic 9 BYOK AI)
+→ Wave 4 (Epic 7 Dashboard).
 
 **Deployment posture:** **local-first.** Develop and validate on your machine with seed/real data. Do
 **not** stand up a persistent hosted environment yet — see §5.2 for the local-first → smoke-deploy →
 continuous-deploy sequence and the local↔hosted parity rules to follow while building.
 
 **Recent decisions captured below:** local-first deployment + GCP/Neon rationale (§5.1–5.2);
-invitation-only access policy (§8); user-provided (BYOK) AI credentials, pulled into Phase 1 (§9). The
-PRD and roadmap have been reconciled to match.
+invitation-only access policy (§8); user-provided (BYOK) AI credentials, pulled into Phase 1 (§9);
+E8.4 household quota = 5 pending invites, refreshes on acceptance. The PRD and roadmap have been
+reconciled to match.
 
 ---
 
@@ -221,8 +231,8 @@ cross-member leakage for each state.**
 
 | Wave | Epics | Gate |
 |---|---|---|
-| **1** | Epic 0 — Foundation ✅ *(done)* | Must merge to `main` before Wave 2 starts. |
-| **2** | Epic 1 (Household), Epic 2 (Accounts), Epic 4 (Categories), **Epic 8 (Access & Site Admin)** | Build on the kernel, in parallel. Epic 8 gates signup — start it early. |
+| **1** | Epic 0 — Foundation ✅ | Merged to `main`. |
+| **2** | Epic 8 ✅ (E8.1–E8.3 merged; E8.4 pending-small) · **Epic 1 (Household) · Epic 2 (Accounts) · Epic 4 (Categories)** | Epic 1 is the current gate — accounts and categories depend on it. |
 | **3** | Epic 3 (Import — **high priority**), Epic 5 (Transactions), Epic 6 (Budgets), **Epic 9 (BYOK AI)** | Stub upstream where needed. |
 | **4** | Epic 7 (Dashboard) | Integrates transactions + budgets; lands last. |
 
@@ -376,28 +386,31 @@ concrete work and the acceptance bar. Sizes (S/M/L) carry over from the epic doc
 - **Phase 2 (do not build):** custom chart **builder**, net worth charts, rental cash-flow report. (E7.4
   is a fixed report, not the builder.)
 
-### Epic 8 — Platform Access & Site Admin  *(NEW · Wave 2 — build alongside Epic 1)*  — depends on E0
+### Epic 8 — Platform Access & Site Admin  *(Wave 2 — **E8.1–E8.3 ✅ merged to main**)*  — depends on E0
 
 **Goal:** Phase 1 is **invitation-only**. Only people the site admin invites can create an account.
 The mechanism is a policy toggle that later opens to beta (household-to-household invites) and then GA.
 **This is platform-level access, distinct from household member invites (Epic 1).**
 
-- **E8.1 Registration policy + gated signup** *(M, PRD: S-6)* — a global `RegistrationPolicy.mode`
-  (`admin_invite` | `beta_invite` | `open`, default `admin_invite`). The signup endpoint enforces the
-  active policy **server-side**: in `admin_invite` mode, signup requires a valid, unexpired
-  `SignupInvite` token for that email, which is consumed on success. Rate-limited.
-  - AC: no account can be created without a valid invite while in `admin_invite`. UI hiding is not
-    sufficient — enforcement is on the API.
-- **E8.2 Site-admin role + bootstrap** *(S)* — `User.isSiteAdmin`; a guard for admin-only endpoints;
-  **seed the first site admin** (`hksingh@gmail.com`) via migration/seed since no admin exists to invite
-  the first one.
-- **E8.3 Admin area (guarded `/admin`, not a separate app)** *(M)* — site-admin-only routes + API to
-  issue / list / resend / revoke `SignupInvite`s, view pending vs accepted, and a basic user list.
-  Require site-admin **and** MFA; intended to sit behind IAP/IP-allowlist in any hosted env.
-- **E8.4 Beta & GA policy switches** *(S — forward-built, exercised later)* — `beta_invite` lets an
-  existing household issue signup-invites (with a per-household quota), reusing the same `SignupInvite`
-  flow (`issuedByHouseholdId`); `open` requires no invite. Phase 1 ships the toggle + `admin_invite`
-  path; beta/GA are config flips, not new builds.
+- **E8.1 Registration policy + gated signup** ✅ — `RegistrationPolicy.mode` singleton in DB
+  (`admin_invite` | `beta_invite` | `open`, default `admin_invite`). Signup endpoint enforces the
+  active policy server-side; invite token consumed on success. `SignupInvite` model with
+  `issuedByAdminId`, `issuedByHouseholdId?`, `expiresAt`, `usedAt`.
+- **E8.2 Site-admin role + bootstrap** ✅ — `User.isSiteAdmin`; `SiteAdminGuard`; seed promotes
+  `hksingh@gmail.com` to site admin on first run.
+- **E8.3 Admin area** ✅ — `/admin/*` (React, guarded by `AdminLayout` + `SiteAdminGuard`): invite
+  management (send/resend/revoke), user list, registration-policy toggle. Dashboard shows "Admin" nav
+  link for site admins only.
+- **E8.4 Beta & GA policy switches** *(S — pending)* — `beta_invite` lets an existing household issue
+  signup-invites with a quota; `open` requires no invite.
+  - **Quota decision:** 5 pending invites per household (`usedAt IS NULL AND expiresAt > now`); slot
+    reopens on acceptance or expiry. Store as `RegistrationPolicy.householdInviteQuota Int @default(5)`.
+  - **Work remaining:** (a) schema migration adding `householdInviteQuota`; (b) fix
+    `AuthService.signup()` — `open` skips invite check, `beta_invite` validates household-issued invite;
+    (c) expose + edit quota in `GET/PATCH /admin/registration-policy` and PolicyPage UI;
+    (d) enforce quota at household invite creation (wired in Epic 1 when household invite endpoint exists).
+  - Note: `SignupInvite.issuedByAdminId` is currently required — make it nullable for household-issued
+    invites, or rely on `issuedByHouseholdId` presence.
 
 ### Epic 9 — BYOK AI Categorization  *(NEW · Wave 3 — build with Epics 3/5/6)*  — depends on E2, E4
 
