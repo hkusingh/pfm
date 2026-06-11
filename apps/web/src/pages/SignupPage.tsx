@@ -7,7 +7,10 @@ import { AuthLayout } from '../components/AuthLayout';
 export function SignupPage() {
   const [searchParams] = useSearchParams();
   const inviteToken = searchParams.get('invite') ?? undefined;
+  // Household invite token: passed when arriving from a household invite link
+  const householdInviteToken = searchParams.get('householdInvite') ?? undefined;
 
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -20,10 +23,19 @@ export function SignupPage() {
     setError('');
     setLoading(true);
     try {
-      const res = await api.post<{ emailVerifiedAt: string | null }>('/auth/signup', { email, password, inviteToken });
+      const res = await api.post<{ emailVerifiedAt: string | null }>('/auth/signup', {
+        name,
+        email,
+        password,
+        inviteToken,
+      });
       if (res.emailVerifiedAt) {
         // AUTH_GATE off — email auto-verified, go straight to login
-        navigate('/login');
+        // Carry household invite token so the user lands on the accept page after MFA setup
+        const dest = householdInviteToken
+          ? `/login?householdInvite=${householdInviteToken}`
+          : '/login';
+        navigate(dest);
       } else {
         setDone(true);
       }
@@ -61,12 +73,21 @@ export function SignupPage() {
         <CardHeader>
           <CardTitle>Create account</CardTitle>
         </CardHeader>
-        {!inviteToken && (
+        {!inviteToken && !householdInviteToken && (
           <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 mb-4">
             This is an invitation-only service. You need a valid invite link to create an account.
           </div>
         )}
         <form onSubmit={handleSubmit} className="space-y-4">
+          <FormField
+            label="Your name"
+            name="name"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            autoComplete="name"
+          />
           <FormField
             label="Email"
             name="email"

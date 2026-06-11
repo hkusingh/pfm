@@ -8,6 +8,9 @@ import { MfaVerifyPage } from './pages/MfaVerifyPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { CreateHouseholdPage } from './pages/CreateHouseholdPage';
+import { HouseholdSettingsPage } from './pages/HouseholdSettingsPage';
+import { InviteAcceptPage } from './pages/InviteAcceptPage';
 import { AdminLayout } from './components/AdminLayout';
 import { InvitesPage } from './pages/admin/InvitesPage';
 import { UsersPage } from './pages/admin/UsersPage';
@@ -41,9 +44,14 @@ export function App() {
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
 
+          {/* Household invite — accessible logged in or out */}
+          <Route path="/invites/:token" element={<InviteAcceptPage />} />
+
           {/* Protected */}
           <Route element={<ProtectedRoute />}>
             <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/onboarding/household" element={<CreateHouseholdPage />} />
+            <Route path="/settings/household" element={<HouseholdSettingsPage />} />
             {/* Admin section — AdminLayout enforces isSiteAdmin */}
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<Navigate to="/admin/invites" replace />} />

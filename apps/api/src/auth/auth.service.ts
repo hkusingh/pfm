@@ -53,6 +53,7 @@ export class AuthService {
       data: {
         email: body.email,
         passwordHash,
+        name: body.name,
         // Gate off: auto-verify email so the user can log in immediately
         emailVerifiedAt: authGate() ? undefined : now,
       },
@@ -162,6 +163,7 @@ export class AuthService {
   async getMe(userId: string): Promise<{
     id: string;
     email: string;
+    name: string;
     emailVerifiedAt: Date | null;
     isSiteAdmin: boolean;
     createdAt: Date;
@@ -169,7 +171,7 @@ export class AuthService {
   }> {
     const user = await prisma.user.findUniqueOrThrow({
       where: { id: userId },
-      select: { id: true, email: true, emailVerifiedAt: true, isSiteAdmin: true, createdAt: true },
+      select: { id: true, email: true, name: true, emailVerifiedAt: true, isSiteAdmin: true, createdAt: true },
     });
     const mfaMethods = await prisma.mfaMethod.findMany({
       where: { userId, confirmedAt: { not: null } },

@@ -3,3 +3,4 @@
 // Contracts are defined here first; server and all clients import the inferred types.
 export * from './auth';
 export * from './mfa';
+export * from './household';
