@@ -12,6 +12,7 @@ export function MfaVerifyPage() {
   const mfaChallengeToken = (location.state as { mfaChallengeToken?: string })?.mfaChallengeToken;
 
   const [code, setCode] = useState('');
+  const [trustDevice, setTrustDevice] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -25,10 +26,13 @@ export function MfaVerifyPage() {
     setError('');
     setLoading(true);
     try {
-      const res = await api.post<{ accessToken: string; refreshToken: string }>('/mfa/verify', {
-        mfaChallengeToken,
-        code,
-      });
+      const res = await api.post<{ accessToken: string; refreshToken: string; deviceToken?: string }>(
+        '/mfa/verify',
+        { mfaChallengeToken, code, trustDevice },
+      );
+      if (res.deviceToken) {
+        localStorage.setItem('deviceToken', res.deviceToken);
+      }
       setTokens(res.accessToken, res.refreshToken);
       navigate('/dashboard');
     } catch (err) {
@@ -49,6 +53,15 @@ export function MfaVerifyPage() {
             onChange={(e) => setCode(e.target.value)}
             required autoComplete="one-time-code" inputMode="numeric" maxLength={6}
           />
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={trustDevice}
+              onChange={(e) => setTrustDevice(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600"
+            />
+            <span className="text-sm text-gray-600">Trust this device for 30 days</span>
+          </label>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <Button type="submit" className="w-full" loading={loading}>Verify</Button>
         </form>

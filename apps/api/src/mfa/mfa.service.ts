@@ -140,7 +140,7 @@ export class MfaService {
 
   // ─── MFA verification (post-login challenge) ─────────────────────────────────
 
-  async verifyMfaChallenge(body: MfaVerifyBody): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
+  async verifyMfaChallenge(body: MfaVerifyBody): Promise<{ accessToken: string; refreshToken: string; expiresIn: number; deviceToken?: string }> {
     const userId = await this.tokens.verifyMfaChallengeToken(body.mfaChallengeToken);
 
     const primaryMethod = await prisma.mfaMethod.findFirst({
@@ -162,7 +162,17 @@ export class MfaService {
     }
 
     const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    return this.tokens.issueTokenPair(user.id, user.email, true);
+    const pair = await this.tokens.issueTokenPair(user.id, user.email, true);
+
+    if (body.trustDevice) {
+      const rawToken = randomBytes(32).toString('hex');
+      const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+      await prisma.trustedDevice.create({ data: { userId, tokenHash, expiresAt } });
+      return { ...pair, deviceToken: rawToken };
+    }
+
+    return pair;
   }
 
   // ─── Recovery code login ─────────────────────────────────────────────────────

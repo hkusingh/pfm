@@ -25,6 +25,7 @@ model User {
   mfaMethods      MfaMethod[]
   recoveryCodes   RecoveryCode[]
   sessions        Session[]
+  trustedDevices  TrustedDevice[]
   memberships     Membership[]
   invitesSent     Invite[]         @relation("InvitedBy")
   accounts        Account[]
@@ -41,6 +42,18 @@ model Session {
   expiresAt DateTime
   revokedAt DateTime?
   createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model TrustedDevice {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

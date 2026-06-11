@@ -66,4 +66,14 @@ export class AdminController {
   async listUsers() {
     return ok(await this.admin.listUsers());
   }
+
+  @Patch('users/:id/site-admin')
+  @HttpCode(200)
+  async setSiteAdmin(
+    @Param('id') id: string,
+    @CurrentUser() actor: AccessTokenPayload,
+    @Body(new ZodValidationPipe(z.object({ isSiteAdmin: z.boolean() }))) body: { isSiteAdmin: boolean },
+  ) {
+    return ok(await this.admin.setSiteAdmin(id, actor.sub, body.isSiteAdmin));
+  }
 }
