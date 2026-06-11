@@ -6,6 +6,7 @@ import { EmailModule } from './email/email.module';
 import { AuthModule } from './auth/auth.module';
 import { MfaModule } from './mfa/mfa.module';
 import { PrivacyModule } from './privacy/privacy.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { PrivacyModule } from './privacy/privacy.module';
     AuthModule,
     MfaModule,
     PrivacyModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [

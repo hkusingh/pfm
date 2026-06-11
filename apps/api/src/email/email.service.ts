@@ -28,6 +28,17 @@ export class EmailService {
     });
   }
 
+  async sendSignupInvite(to: string, signupUrl: string): Promise<void> {
+    await this.send({
+      to,
+      subject: "You're invited to join",
+      text: `You've been invited to create an account. Click the link to get started:\n\n${signupUrl}\n\nThis invite expires in 7 days.`,
+      html: `<p>You've been invited to create an account.</p>
+             <p><a href="${signupUrl}">Accept invitation</a></p>
+             <p>This invite expires in 7 days.</p>`,
+    });
+  }
+
   async sendPasswordReset(to: string, resetUrl: string): Promise<void> {
     await this.send({
       to,
