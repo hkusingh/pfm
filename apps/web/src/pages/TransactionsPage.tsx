@@ -8,7 +8,7 @@ import { useAuth } from '../lib/auth';
 type Me = { id: string; email: string; name: string; isSiteAdmin: boolean };
 type Household = { id: string; name: string };
 type Account = { id: string; name: string };
-type Category = { id: string; name: string; color: string | null; parentId: string | null; children?: Category[] };
+type Category = { id: string; name: string; color: string | null; parentId: string | null; kind?: string; children?: Category[] };
 
 type TransactionItem = {
   id: string;
@@ -31,6 +31,8 @@ type TxListResponse = {
   page: number;
   limit: number;
 };
+
+type ViewTab = 'uncategorized' | 'categorized' | 'all';
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
   USD: '$', EUR: '€', GBP: '£', INR: '₹',
@@ -84,6 +86,9 @@ export function TransactionsPage() {
     queryFn: () => api.get<Household>('/households/me'),
   });
 
+  // ── View tab ─────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<ViewTab>('uncategorized');
+
   // ── Filters ──────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
   const [filterAccount, setFilterAccount] = useState('');
@@ -93,14 +98,26 @@ export function TransactionsPage() {
   const [page, setPage] = useState(1);
   const LIMIT = 50;
 
-  const params = new URLSearchParams();
-  if (search) params.set('search', search);
-  if (filterAccount) params.set('accountId', filterAccount);
-  if (filterCategory) params.set('categoryId', filterCategory);
-  if (filterFrom) params.set('from', filterFrom);
-  if (filterTo) params.set('to', filterTo);
-  params.set('page', String(page));
-  params.set('limit', String(LIMIT));
+  function buildParams(tab: ViewTab) {
+    const p = new URLSearchParams();
+    if (search) p.set('search', search);
+    if (filterAccount) p.set('accountId', filterAccount);
+    if (tab === 'uncategorized') {
+      p.set('categoryId', 'uncategorized');
+    } else if (tab === 'categorized') {
+      p.set('hasCategory', 'true');
+      if (filterCategory) p.set('categoryId', filterCategory);
+    } else {
+      if (filterCategory) p.set('categoryId', filterCategory);
+    }
+    if (filterFrom) p.set('from', filterFrom);
+    if (filterTo) p.set('to', filterTo);
+    p.set('page', String(page));
+    p.set('limit', String(LIMIT));
+    return p;
+  }
+
+  const params = buildParams(activeTab);
 
   const { data: txData, isLoading } = useQuery({
     queryKey: ['transactions', household?.id, params.toString()],
@@ -108,6 +125,15 @@ export function TransactionsPage() {
       api.get<TxListResponse>(`/households/${household!.id}/transactions?${params.toString()}`),
     enabled: !!household?.id,
   });
+
+  // Uncategorized count for the tab badge (always fetch, small query)
+  const { data: uncatData } = useQuery({
+    queryKey: ['transactions-uncat-count', household?.id],
+    queryFn: () =>
+      api.get<TxListResponse>(`/households/${household!.id}/transactions?categoryId=uncategorized&limit=1`),
+    enabled: !!household?.id,
+  });
+  const uncatCount = uncatData?.total ?? 0;
 
   const { data: accounts = [] } = useQuery({
     queryKey: ['accounts-flat', household?.id],
@@ -124,12 +150,34 @@ export function TransactionsPage() {
     enabled: !!household?.id,
   });
 
-  // Flat list of all categories for dropdowns
   const allCategories: Category[] = [];
   for (const p of categories) {
     allCategories.push(p);
     for (const ch of p.children ?? []) allCategories.push(ch);
   }
+
+  function categoryKind(categoryId: string | null): string | null {
+    if (!categoryId) return null;
+    return allCategories.find((c) => c.id === categoryId)?.kind ?? null;
+  }
+
+  // ── Auto-classify mutation ────────────────────────────────────────────────
+  const [classifyResult, setClassifyResult] = useState<{ classified: number; total: number } | null>(null);
+
+  const classifyMutation = useMutation({
+    mutationFn: () => {
+      if (!household) throw new Error('missing household');
+      return api.post<{ classified: number; total: number }>(
+        `/households/${household.id}/transactions/apply-rules`,
+        {},
+      );
+    },
+    onSuccess: (result) => {
+      setClassifyResult(result);
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+      qc.invalidateQueries({ queryKey: ['transactions-uncat-count'] });
+    },
+  });
 
   // ── Recategorize panel ───────────────────────────────────────────────────
   const [recatTx, setRecatTx] = useState<TransactionItem | null>(null);
@@ -137,11 +185,48 @@ export function TransactionsPage() {
   const [recatCreateRule, setRecatCreateRule] = useState(false);
   const [recatError, setRecatError] = useState('');
 
+  const [showNewCat, setShowNewCat] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [newCatParentId, setNewCatParentId] = useState('');
+  const [newCatKind, setNewCatKind] = useState<'expense' | 'income'>('expense');
+  const [newCatLoading, setNewCatLoading] = useState(false);
+  const [newCatError, setNewCatError] = useState('');
+
   function openRecat(tx: TransactionItem) {
     setRecatTx(tx);
     setRecatCatId(tx.categoryId ?? '');
     setRecatCreateRule(false);
     setRecatError('');
+    setShowNewCat(false);
+    setNewCatName('');
+    setNewCatParentId('');
+    setNewCatKind('expense');
+    setNewCatError('');
+  }
+
+  async function createCategory() {
+    if (!household || !newCatName.trim()) return;
+    setNewCatLoading(true);
+    setNewCatError('');
+    try {
+      const created = await api.post<{ id: string; name: string; color: string | null; parentId: string | null }>(
+        `/households/${household.id}/categories`,
+        {
+          name: newCatName.trim(),
+          parentId: newCatParentId || null,
+          kind: newCatKind,
+        },
+      );
+      await qc.invalidateQueries({ queryKey: ['categories'] });
+      setRecatCatId(created.id);
+      setShowNewCat(false);
+      setNewCatName('');
+      setNewCatParentId('');
+    } catch (err) {
+      setNewCatError(err instanceof ApiException ? err.message : 'Failed to create category.');
+    } finally {
+      setNewCatLoading(false);
+    }
   }
 
   const recatMutation = useMutation({
@@ -154,6 +239,7 @@ export function TransactionsPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['transactions'] });
+      qc.invalidateQueries({ queryKey: ['transactions-uncat-count'] });
       setRecatTx(null);
     },
     onError: (err) => setRecatError(err instanceof ApiException ? err.message : 'Failed to save.'),
@@ -176,6 +262,13 @@ export function TransactionsPage() {
     navigate('/login');
   }
 
+  function switchTab(tab: ViewTab) {
+    setActiveTab(tab);
+    setPage(1);
+    setFilterCategory('');
+    setClassifyResult(null);
+  }
+
   const items = txData?.items ?? [];
   const total = txData?.total ?? 0;
   const totalPages = Math.ceil(total / LIMIT);
@@ -184,7 +277,7 @@ export function TransactionsPage() {
     <NavShell navItems={navItems} userEmail={me?.email ?? ''} onSignOut={handleSignOut}>
       <div className="p-6 max-w-5xl space-y-4">
 
-        {/* Header + search */}
+        {/* Header */}
         <div className="flex items-center justify-between gap-4">
           <h1 className="text-xl font-semibold text-gray-900">Transactions</h1>
           <input
@@ -196,63 +289,152 @@ export function TransactionsPage() {
           />
         </div>
 
-        {/* Filter row */}
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <select
-            value={filterAccount}
-            onChange={(e) => { setFilterAccount(e.target.value); setPage(1); }}
-            className="h-[34px] rounded-lg border border-gray-200 px-2 text-xs bg-white text-gray-700"
-          >
-            <option value="">All accounts</option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>{a.name}</option>
-            ))}
-          </select>
-
-          <select
-            value={filterCategory}
-            onChange={(e) => { setFilterCategory(e.target.value); setPage(1); }}
-            className="h-[34px] rounded-lg border border-gray-200 px-2 text-xs bg-white text-gray-700"
-          >
-            <option value="">All categories</option>
-            <option value="uncategorized">Uncategorized</option>
-            {allCategories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.parentId ? `  ↳ ${c.name}` : c.name}
-              </option>
-            ))}
-          </select>
-
-          <span className="text-gray-400 text-xs">from</span>
-          <input
-            type="date"
-            value={filterFrom}
-            onChange={(e) => { setFilterFrom(e.target.value); setPage(1); }}
-            className="h-[34px] rounded-lg border border-gray-200 px-2 text-xs bg-white"
-          />
-          <span className="text-gray-400 text-xs">to</span>
-          <input
-            type="date"
-            value={filterTo}
-            onChange={(e) => { setFilterTo(e.target.value); setPage(1); }}
-            className="h-[34px] rounded-lg border border-gray-200 px-2 text-xs bg-white"
-          />
-
-          {(filterAccount || filterCategory || filterFrom || filterTo || search) && (
+        {/* Tabs */}
+        <div className="flex items-center gap-1 border-b border-gray-200">
+          {([
+            ['uncategorized', 'Needs review'],
+            ['categorized', 'Categorized'],
+            ['all', 'All'],
+          ] as [ViewTab, string][]).map(([tab, label]) => (
             <button
-              onClick={() => { setSearch(''); setFilterAccount(''); setFilterCategory(''); setFilterFrom(''); setFilterTo(''); setPage(1); }}
-              className="text-xs text-blue-600 hover:underline"
+              key={tab}
+              onClick={() => switchTab(tab)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                activeTab === tab
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
             >
-              Clear filters
+              {label}
+              {tab === 'uncategorized' && uncatCount > 0 && (
+                <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-amber-100 text-amber-700 text-xs font-semibold px-1.5 py-0.5 min-w-[1.25rem]">
+                  {uncatCount}
+                </span>
+              )}
             </button>
-          )}
-
-          {total > 0 && (
-            <span className="ml-auto text-xs text-gray-400">
-              {total} transaction{total !== 1 ? 's' : ''}
-            </span>
-          )}
+          ))}
         </div>
+
+        {/* Uncategorized tab banner with Auto-classify */}
+        {activeTab === 'uncategorized' && uncatCount > 0 && (
+          <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+            <div>
+              <p className="text-sm font-medium text-amber-800">
+                {uncatCount} transaction{uncatCount !== 1 ? 's' : ''} need{uncatCount === 1 ? 's' : ''} a category
+              </p>
+              {classifyResult && (
+                <p className="text-xs text-amber-700 mt-0.5">
+                  Auto-classify matched {classifyResult.classified} of {classifyResult.total} — assign the rest manually below.
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => { setClassifyResult(null); classifyMutation.mutate(); }}
+              disabled={classifyMutation.isPending}
+              className="px-3 py-1.5 text-xs font-medium bg-amber-600 text-white rounded-md hover:bg-amber-700 disabled:opacity-50 whitespace-nowrap"
+            >
+              {classifyMutation.isPending ? 'Classifying…' : 'Auto-classify all'}
+            </button>
+          </div>
+        )}
+
+        {/* Filter row — shown only for all / categorized tabs */}
+        {activeTab !== 'uncategorized' && (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <select
+              value={filterAccount}
+              onChange={(e) => { setFilterAccount(e.target.value); setPage(1); }}
+              className="h-[34px] rounded-lg border border-gray-200 px-2 text-xs bg-white text-gray-700"
+            >
+              <option value="">All accounts</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+
+            {activeTab === 'categorized' && (
+              <select
+                value={filterCategory}
+                onChange={(e) => { setFilterCategory(e.target.value); setPage(1); }}
+                className="h-[34px] rounded-lg border border-gray-200 px-2 text-xs bg-white text-gray-700"
+              >
+                <option value="">All categories</option>
+                {allCategories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.parentId ? `  ↳ ${c.name}` : c.name}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {activeTab === 'all' && (
+              <select
+                value={filterCategory}
+                onChange={(e) => { setFilterCategory(e.target.value); setPage(1); }}
+                className="h-[34px] rounded-lg border border-gray-200 px-2 text-xs bg-white text-gray-700"
+              >
+                <option value="">All categories</option>
+                <option value="uncategorized">Uncategorized</option>
+                {allCategories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.parentId ? `  ↳ ${c.name}` : c.name}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <span className="text-gray-400 text-xs">from</span>
+            <input
+              type="date"
+              value={filterFrom}
+              onChange={(e) => { setFilterFrom(e.target.value); setPage(1); }}
+              className="h-[34px] rounded-lg border border-gray-200 px-2 text-xs bg-white"
+            />
+            <span className="text-gray-400 text-xs">to</span>
+            <input
+              type="date"
+              value={filterTo}
+              onChange={(e) => { setFilterTo(e.target.value); setPage(1); }}
+              className="h-[34px] rounded-lg border border-gray-200 px-2 text-xs bg-white"
+            />
+
+            {(filterAccount || filterCategory || filterFrom || filterTo || search) && (
+              <button
+                onClick={() => { setSearch(''); setFilterAccount(''); setFilterCategory(''); setFilterFrom(''); setFilterTo(''); setPage(1); }}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                Clear filters
+              </button>
+            )}
+
+            {total > 0 && (
+              <span className="ml-auto text-xs text-gray-400">
+                {total} transaction{total !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Account filter for uncategorized tab */}
+        {activeTab === 'uncategorized' && (
+          <div className="flex items-center gap-2">
+            <select
+              value={filterAccount}
+              onChange={(e) => { setFilterAccount(e.target.value); setPage(1); }}
+              className="h-[34px] rounded-lg border border-gray-200 px-2 text-xs bg-white text-gray-700"
+            >
+              <option value="">All accounts</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+            {total > 0 && (
+              <span className="ml-auto text-xs text-gray-400">
+                {total} transaction{total !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Transaction table */}
         <Card padding="none">
@@ -260,9 +442,11 @@ export function TransactionsPage() {
             <p className="px-5 py-6 text-sm text-gray-400">Loading…</p>
           ) : items.length === 0 ? (
             <p className="px-5 py-6 text-sm text-gray-400 text-center">
-              {search || filterAccount || filterCategory || filterFrom || filterTo
-                ? 'No transactions match your filters.'
-                : 'No transactions yet. Add one from the Accounts page or import a statement.'}
+              {activeTab === 'uncategorized'
+                ? classifyResult
+                  ? `All matched transactions categorized. ${uncatCount > 0 ? `${uncatCount} still need manual review.` : 'Nothing left to review!'}`
+                  : 'All transactions are categorized.'
+                : 'No transactions match your filters.'}
             </p>
           ) : (
             <table className="w-full text-sm">
@@ -280,7 +464,13 @@ export function TransactionsPage() {
                   <>
                     <tr
                       key={tx.id}
-                      className={`hover:bg-gray-50 ${!tx.categoryId ? 'bg-amber-50' : ''}`}
+                      className={`hover:bg-gray-50 ${
+                        categoryKind(tx.categoryId) === 'transfer'
+                          ? 'bg-gray-50 opacity-70'
+                          : !tx.categoryId
+                          ? 'bg-amber-50'
+                          : ''
+                      }`}
                     >
                       <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">
                         {formatDate(tx.postedDate)}
@@ -309,11 +499,12 @@ export function TransactionsPage() {
                     {recatTx?.id === tx.id && (
                       <tr key={`${tx.id}-recat`}>
                         <td colSpan={5} className="px-4 py-0">
-                          <div className="border border-blue-100 bg-blue-50 rounded-lg px-4 py-3 mb-2 max-w-sm">
+                          <div className="border border-blue-100 bg-blue-50 rounded-lg px-4 py-3 mb-2 max-w-md">
                             <p className="text-xs font-semibold text-gray-800 mb-2">
                               Recategorize · {tx.merchant ?? 'this transaction'}
                             </p>
                             <div className="space-y-2">
+
                               <div className="space-y-1">
                                 <label className="block text-xs font-medium text-gray-600">Category</label>
                                 <select
@@ -322,13 +513,87 @@ export function TransactionsPage() {
                                   className="block w-full h-[32px] rounded-md border border-gray-300 px-2 text-xs bg-white"
                                 >
                                   <option value="">Uncategorized</option>
-                                  {allCategories.map((c) => (
-                                    <option key={c.id} value={c.id}>
-                                      {c.parentId ? `  ↳ ${c.name}` : c.name}
-                                    </option>
+                                  {categories.map((parent) => (
+                                    <optgroup key={parent.id} label={parent.name}>
+                                      <option value={parent.id}>{parent.name}</option>
+                                      {(parent.children ?? []).map((child) => (
+                                        <option key={child.id} value={child.id}>{'  ↳ '}{child.name}</option>
+                                      ))}
+                                    </optgroup>
                                   ))}
                                 </select>
                               </div>
+
+                              {!showNewCat ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setShowNewCat(true)}
+                                  className="text-xs text-blue-600 hover:underline"
+                                >
+                                  + New category
+                                </button>
+                              ) : (
+                                <div className="border border-blue-200 bg-white rounded-md px-3 py-2.5 space-y-2">
+                                  <p className="text-xs font-semibold text-gray-700">New category</p>
+
+                                  <input
+                                    type="text"
+                                    placeholder="Category name"
+                                    value={newCatName}
+                                    onChange={(e) => setNewCatName(e.target.value)}
+                                    className="block w-full h-[30px] rounded-md border border-gray-300 px-2 text-xs"
+                                    autoFocus
+                                  />
+
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                      <label className="block text-xs text-gray-500 mb-0.5">Sub-category of</label>
+                                      <select
+                                        value={newCatParentId}
+                                        onChange={(e) => setNewCatParentId(e.target.value)}
+                                        className="block w-full h-[30px] rounded-md border border-gray-300 px-2 text-xs bg-white"
+                                      >
+                                        <option value="">(top-level)</option>
+                                        {categories.map((p) => (
+                                          <option key={p.id} value={p.id}>{p.name}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs text-gray-500 mb-0.5">Type</label>
+                                      <select
+                                        value={newCatKind}
+                                        onChange={(e) => setNewCatKind(e.target.value as 'expense' | 'income')}
+                                        className="block w-full h-[30px] rounded-md border border-gray-300 px-2 text-xs bg-white"
+                                        disabled={!!newCatParentId}
+                                      >
+                                        <option value="expense">Expense</option>
+                                        <option value="income">Income</option>
+                                      </select>
+                                    </div>
+                                  </div>
+
+                                  {newCatError && <p className="text-xs text-red-600">{newCatError}</p>}
+
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={createCategory}
+                                      disabled={!newCatName.trim() || newCatLoading}
+                                      className="px-3 py-1 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                                    >
+                                      {newCatLoading ? 'Adding…' : 'Add'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => { setShowNewCat(false); setNewCatName(''); setNewCatError(''); }}
+                                      className="text-xs text-gray-500 hover:text-gray-700"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
 
                               {tx.merchant && recatCatId && (
                                 <label className="flex items-start gap-2 text-xs text-gray-700 cursor-pointer">

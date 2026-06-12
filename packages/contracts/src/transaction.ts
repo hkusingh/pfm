@@ -33,3 +33,11 @@ export const RecategorizeTxBodySchema = z.object({
   createRule: z.boolean().optional(),
 });
 export type RecategorizeTxBody = z.infer<typeof RecategorizeTxBodySchema>;
+
+// ── Bulk apply-rules ─────────────────────────────────────────────────────────
+
+export const ApplyRulesResponseSchema = z.object({
+  classified: z.number(),
+  total: z.number(),
+});
+export type ApplyRulesResponse = z.infer<typeof ApplyRulesResponseSchema>;

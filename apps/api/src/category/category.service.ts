@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { prisma } from '@pfm/db';
 import { DEFAULT_CATEGORIES } from '@pfm/core';
-import { normalizeMerchant } from '@pfm/core';
+import { merchantRuleKey } from '@pfm/core';
 import type {
   CreateCategoryBody,
   UpdateCategoryBody,
@@ -16,6 +16,25 @@ import type {
   CategoryResponse,
   CategoryRuleResponse,
 } from '@pfm/contracts';
+
+// Merchant strings that strongly indicate an inter-account transfer rather than a real expense.
+// Tested against the normalized (upper-case, stripped) merchant name.
+export const TRANSFER_PATTERNS: RegExp[] = [
+  /CREDIT CARD (PAYMENT|PMT|PAY)/,
+  /CREDITCARD (PAYMENT|PMT)/,
+  /CARD PAYMENT/,
+  /\bAUTOPAY\b/,
+  /ONLINE (PAYMENT|PMT|PAY|TRANSFER)/,
+  /BILL (PAYMENT|PMT|PAY)/,
+  /\bTRANSFER\b/,
+  /TRANSFER (TO|FROM)/,
+  /DIRECT (DEBIT|DEPOSIT) TRANSFER/,
+  /PAYMENT THANK YOU/,
+  /PAYMENT RECEIVED/,
+  /ACCOUNT TRANSFER/,
+  /\bZELLE\b/,
+  /\bVENMO\b/,
+];
 
 function toResponse(c: {
   id: string;
@@ -75,6 +94,21 @@ export class CategoryService {
   // ── List ──────────────────────────────────────────────────────────────────
 
   async listCategories(householdId: string) {
+    const count = await prisma.category.count({ where: { householdId } });
+    if (count === 0) {
+      await this.seedDefaults(householdId);
+    } else {
+      // Ensure Transfer system category exists — added after initial households were created
+      const hasTransfer = await prisma.category.findFirst({
+        where: { householdId, kind: 'transfer', isSystem: true },
+      });
+      if (!hasTransfer) {
+        await prisma.category.create({
+          data: { householdId, name: 'Transfer', color: '#718096', kind: 'transfer', isSystem: true, sortOrder: -1 },
+        });
+      }
+    }
+
     const rows = await prisma.category.findMany({
       where: { householdId },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
@@ -238,7 +272,7 @@ export class CategoryService {
     body: CreateCategoryRuleBody,
   ): Promise<CategoryRuleResponse> {
     await this.findOwned(body.categoryId, householdId);
-    const normalized = normalizeMerchant(body.merchantMatch);
+    const normalized = merchantRuleKey(body.merchantMatch);
     if (!normalized) throw new BadRequestException('merchantMatch is empty after normalization');
 
     // Upsert — one rule per normalized match per household
@@ -280,15 +314,26 @@ export class CategoryService {
   }
 
   // Applies rules to a normalized merchant string — returns matching categoryId or null.
+  // Falls back to Transfer category for common payment/transfer patterns.
   async applyRules(householdId: string, merchantRaw: string | null | undefined): Promise<string | null> {
     if (!merchantRaw) return null;
-    const normalized = normalizeMerchant(merchantRaw);
-    if (!normalized) return null;
+    const ruleKey = merchantRuleKey(merchantRaw);
+    if (!ruleKey) return null;
 
+    // User-defined rules take precedence
     const rules = await prisma.categoryRule.findMany({ where: { householdId } });
     for (const rule of rules) {
-      if (normalized.includes(rule.merchantMatch)) return rule.categoryId;
+      if (ruleKey.includes(rule.merchantMatch) || rule.merchantMatch.includes(ruleKey)) return rule.categoryId;
     }
+
+    // Auto-detect credit card payments, bank transfers, and inter-account movements
+    if (TRANSFER_PATTERNS.some((p) => p.test(ruleKey))) {
+      const transferCat = await prisma.category.findFirst({
+        where: { householdId, kind: 'transfer', isSystem: true },
+      });
+      if (transferCat) return transferCat.id;
+    }
+
     return null;
   }
 

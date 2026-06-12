@@ -1,13 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { prisma } from '@pfm/db';
 import { buildScope, canViewLineItems } from '@pfm/core';
-import { normalizeMerchant } from '@pfm/core';
-import type { TransactionListItem, TransactionListResponse, RecategorizeTxBody } from '@pfm/contracts';
+import { merchantRuleKey } from '@pfm/core';
+import type { TransactionListItem, TransactionListResponse, RecategorizeTxBody, ApplyRulesResponse } from '@pfm/contracts';
+import { TRANSFER_PATTERNS } from '../category/category.service';
 
 export interface ListTransactionsQuery {
   search?: string;
   accountId?: string;
   categoryId?: string;
+  hasCategory?: boolean;
   from?: string;
   to?: string;
   page?: number;
@@ -57,6 +59,10 @@ export class TransactionService {
     }
     if (query.categoryId !== undefined) {
       where.categoryId = query.categoryId === 'uncategorized' ? null : query.categoryId;
+    } else if (query.hasCategory === true) {
+      where.categoryId = { not: null };
+    } else if (query.hasCategory === false) {
+      where.categoryId = null;
     }
     if (query.from || query.to) {
       where.postedDate = {
@@ -95,6 +101,106 @@ export class TransactionService {
     }));
 
     return { items, total, page, limit };
+  }
+
+  // ── Bulk apply category rules to all uncategorized transactions ──────────
+
+  async applyRulesToAll(householdId: string, viewerUserId: string): Promise<ApplyRulesResponse> {
+    const allAccounts = await prisma.account.findMany({
+      where: { householdId },
+      select: { id: true, ownerUserId: true, visibility: true },
+    });
+    const scope = buildScope(viewerUserId, householdId, 'household', allAccounts);
+    const visibleAccountIds = [...scope.lineItemAccountIds];
+
+    if (visibleAccountIds.length === 0) return { classified: 0, total: 0 };
+
+    // Fetch everything needed in parallel — no per-transaction queries
+    const [uncategorized, rules, transferCat, categorizedTxs] = await Promise.all([
+      prisma.transaction.findMany({
+        where: { accountId: { in: visibleAccountIds }, categoryId: null },
+        select: { id: true, merchant: true },
+      }),
+      prisma.categoryRule.findMany({ where: { householdId } }),
+      prisma.category.findFirst({ where: { householdId, kind: 'transfer', isSystem: true } }),
+      // Learn from transactions the user has already manually categorized
+      prisma.transaction.findMany({
+        where: { accountId: { in: visibleAccountIds }, categoryId: { not: null }, merchant: { not: null } },
+        select: { merchant: true, categoryId: true },
+      }),
+    ]);
+
+    if (uncategorized.length === 0) return { classified: 0, total: 0 };
+
+    // Build learned map: merchantRuleKey → most-used categoryId.
+    // Using merchantRuleKey (strips trailing numeric reference tokens) means
+    // "WF HOME MTG 06/09" and "WF HOME MTG 07/09" both map to key "WF HOME MTG"
+    // so one manual categorization classifies all months.
+    const merchantCatCounts = new Map<string, Map<string, number>>();
+    for (const t of categorizedTxs) {
+      if (!t.merchant || !t.categoryId) continue;
+      const key = merchantRuleKey(t.merchant);
+      if (!key) continue;
+      const m = merchantCatCounts.get(key) ?? new Map<string, number>();
+      m.set(t.categoryId, (m.get(t.categoryId) ?? 0) + 1);
+      merchantCatCounts.set(key, m);
+    }
+    const learnedMap = new Map<string, string>();
+    for (const [key, catCounts] of merchantCatCounts) {
+      let best = '';
+      let bestCount = 0;
+      for (const [catId, count] of catCounts) {
+        if (count > bestCount) { bestCount = count; best = catId; }
+      }
+      if (best) learnedMap.set(key, best);
+    }
+
+    // In-memory resolution: explicit rules → learned → transfer patterns
+    const resolve = (merchantRaw: string | null): string | null => {
+      if (!merchantRaw) return null;
+      const ruleKey = merchantRuleKey(merchantRaw);
+      if (!ruleKey) return null;
+
+      // 1. Explicit category rules — match by key containment (handles both old full-normalized
+      //    rules already in DB and new key-based rules going forward)
+      for (const rule of rules) {
+        if (ruleKey.includes(rule.merchantMatch) || rule.merchantMatch.includes(ruleKey)) {
+          return rule.categoryId;
+        }
+      }
+
+      // 2. Learned from previous manual categorizations — exact key match
+      const learned = learnedMap.get(ruleKey);
+      if (learned) return learned;
+
+      // 3. Transfer pattern auto-detection
+      if (transferCat && TRANSFER_PATTERNS.some((p) => p.test(ruleKey))) {
+        return transferCat.id;
+      }
+
+      return null;
+    };
+
+    // Resolve all uncategorized transactions in memory, then bulk-update per category
+    const byCategoryId = new Map<string, string[]>(); // categoryId → txIds
+    for (const tx of uncategorized) {
+      const catId = resolve(tx.merchant);
+      if (catId) {
+        const ids = byCategoryId.get(catId) ?? [];
+        ids.push(tx.id);
+        byCategoryId.set(catId, ids);
+      }
+    }
+
+    // One updateMany per distinct category (vs N individual updates)
+    await Promise.all(
+      [...byCategoryId.entries()].map(([catId, ids]) =>
+        prisma.transaction.updateMany({ where: { id: { in: ids } }, data: { categoryId: catId } }),
+      ),
+    );
+
+    const classified = [...byCategoryId.values()].reduce((sum, ids) => sum + ids.length, 0);
+    return { classified, total: uncategorized.length };
   }
 
   // ── E5.2 — Recategorize + optional rule ──────────────────────────────────
@@ -139,10 +245,10 @@ export class TransactionService {
 
     // Optionally create/update a category rule for this merchant
     if (body.createRule && body.categoryId && tx.merchant) {
-      const normalized = normalizeMerchant(tx.merchant);
-      if (normalized) {
+      const ruleKey = merchantRuleKey(tx.merchant);
+      if (ruleKey) {
         const existing = await prisma.categoryRule.findFirst({
-          where: { householdId, merchantMatch: normalized },
+          where: { householdId, merchantMatch: ruleKey },
         });
         if (existing) {
           await prisma.categoryRule.update({
@@ -153,7 +259,7 @@ export class TransactionService {
           await prisma.categoryRule.create({
             data: {
               householdId,
-              merchantMatch: normalized,
+              merchantMatch: ruleKey,
               categoryId: body.categoryId,
               createdByUserId: viewerUserId,
             },

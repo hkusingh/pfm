@@ -15,7 +15,7 @@ type Category = {
   color: string | null;
   sortOrder: number;
   isSystem: boolean;
-  kind: 'expense' | 'income';
+  kind: 'expense' | 'income' | 'transfer';
   children: Category[];
 };
 
@@ -56,10 +56,10 @@ export function CategoriesPage() {
   const [formName, setFormName] = useState('');
   const [formParentId, setFormParentId] = useState<string>('');
   const [formColor, setFormColor] = useState(PRESET_COLORS[0]);
-  const [formKind, setFormKind] = useState<'expense' | 'income'>('expense');
+  const [formKind, setFormKind] = useState<'expense' | 'income' | 'transfer'>('expense');
   const [formError, setFormError] = useState('');
 
-  function openAdd(parentId?: string, kind?: 'expense' | 'income') {
+  function openAdd(parentId?: string, kind?: 'expense' | 'income' | 'transfer') {
     setEditingId(null);
     setFormName('');
     setFormParentId(parentId ?? '');
@@ -223,7 +223,7 @@ export function CategoriesPage() {
                           </span>
                         </td>
                         <td className="px-3 py-2.5 text-gray-400 text-xs">
-                          {cat.parentId ? 'sub' : 'parent'}{cat.kind === 'income' ? ' · income' : ''}
+                          {cat.parentId ? 'sub' : 'parent'}{cat.kind !== 'expense' ? ` · ${cat.kind}` : ''}
                         </td>
                         <td className="px-3 py-2.5 text-right">
                           {cat.isSystem ? (
@@ -267,7 +267,7 @@ export function CategoriesPage() {
                             </span>
                           </td>
                           <td className="px-3 py-2 text-gray-400 text-xs">
-                            sub{child.kind === 'income' ? ' · income' : ''}
+                            sub{child.kind !== 'expense' ? ` · ${child.kind}` : ''}
                           </td>
                           <td className="px-3 py-2 text-right">
                             <span className="flex items-center justify-end gap-3">
@@ -359,11 +359,12 @@ export function CategoriesPage() {
                       <label className="block text-sm font-medium text-gray-700">Type</label>
                       <select
                         value={formKind}
-                        onChange={(e) => setFormKind(e.target.value as 'expense' | 'income')}
+                        onChange={(e) => setFormKind(e.target.value as 'expense' | 'income' | 'transfer')}
                         className="block w-full h-[38px] rounded-lg border border-gray-300 px-3 text-sm"
                       >
                         <option value="expense">Expense</option>
                         <option value="income">Income</option>
+                        <option value="transfer">Transfer</option>
                       </select>
                     </div>
                   )}

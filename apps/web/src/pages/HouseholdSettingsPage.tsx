@@ -236,7 +236,7 @@ export function HouseholdSettingsPage() {
                 <select
                   value={editCurrency}
                   onChange={(e) => setEditCurrency(e.target.value)}
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="block w-full h-[38px] rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 >
                   {CURRENCIES.map((c) => (
                     <option key={c} value={c}>{c}</option>
@@ -248,7 +248,7 @@ export function HouseholdSettingsPage() {
                 <select
                   value={editMonthStart}
                   onChange={(e) => setEditMonthStart(Number(e.target.value))}
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="block w-full h-[38px] rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 >
                   {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
                     <option key={d} value={d}>{d}</option>
@@ -384,7 +384,7 @@ export function HouseholdSettingsPage() {
                   <select
                     value={inviteRole}
                     onChange={(e) => setInviteRole(e.target.value as 'owner' | 'member')}
-                    className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="block w-full h-[38px] rounded-lg border border-gray-300 px-3 py-2 text-sm"
                   >
                     <option value="owner">Co-owner — full control</option>
                     <option value="member">Member — view + own accounts</option>

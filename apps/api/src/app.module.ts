@@ -11,6 +11,7 @@ import { HouseholdModule } from './household/household.module';
 import { AccountModule } from './account/account.module';
 import { CategoryModule } from './category/category.module';
 import { TransactionModule } from './transaction/transaction.module';
+import { ImportModule } from './import/import.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { TransactionModule } from './transaction/transaction.module';
     AccountModule,
     CategoryModule,
     TransactionModule,
+    ImportModule,
   ],
   controllers: [AppController],
   providers: [

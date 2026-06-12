@@ -11,7 +11,7 @@ acceptance bar for each.
 
 ## Status & Next Up  *(read this first)*
 
-**Last updated:** 2026-06-10.
+**Last updated:** 2026-06-11.
 
 **Done:**
 - **Epic 0 — Foundation / Shared Kernel** ✅ — monorepo scaffold, data model + migrations, auth
@@ -27,13 +27,25 @@ acceptance bar for each.
   flow. Merged to `main`.
 - **Epic 2 — Accounts & Manual Entry** ✅ (E2.1–E2.4) — manual account CRUD, per-account
   visibility, transaction CRUD with dedup hash, balance sync. Merged to `main`.
+- **Epic 4 — Categories & Sub-categories** ✅ (E4.1–E4.6) — default category tree seeded per household,
+  category CRUD (system-protected), category rules (auto-assign on import/entry), category tree UI
+  at `/categories`. Merged to `main`.
+- **Epic 5 — Transaction List** ✅ (E5.1–E5.2) — visibility-scoped transaction list with search +
+  filters + pagination, inline recategorize panel with optional "always categorize X as Y" rule.
+  UI at `/transactions`. Merged to `main`.
+- **Epic 3 — Document Upload & Import** ✅ (E3.1–E3.4) — CSV parser with quoted-field handling +
+  auto column-mapping heuristic; OFX 1.x (SGML) + OFX 2.x (XML) parser; two-step API
+  (`POST /import/preview` multipart → `POST /import/commit`); `LocalObjectStore` (Phase 1 local FS,
+  swappable for GCS); dedup via `computeDedupHash`; category rules applied on commit; saved column
+  mappings recalled by fingerprint; 3-step wizard in AccountsPage UI (upload → map → done).
+  Merged to `main`.
 
-**Build right now (Wave 2 — remaining):**
+**Build right now (Wave 3 — remaining):**
 
-1. **Epic 4 — Categories** (E4.1–E4.6) — depends on E1 ✅.
+1. **Epic 6 — Budgets & Sinking Funds** (E6.1–E6.6) — depends on E4 ✅, E5 ✅.
+2. **Epic 9 — BYOK AI Categorization** (E9.1–E9.3) — depends on E3 ✅, E4 ✅.
 
-**Then:** Wave 3 (Epic 3 Import — high priority, Epic 5 Transactions, Epic 6 Budgets, Epic 9 BYOK AI)
-→ Wave 4 (Epic 7 Dashboard).
+**Then:** Wave 4 (Epic 7 Dashboard).
 
 **Deployment posture:** **local-first.** Develop and validate on your machine with seed/real data. Do
 **not** stand up a persistent hosted environment yet — see §5.2 for the local-first → smoke-deploy →

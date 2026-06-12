@@ -255,6 +255,7 @@ model Transaction {
 enum CategoryKind {
   expense
   income
+  transfer
 }
 
 model Category {

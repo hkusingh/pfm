@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const CATEGORY_KINDS = ['expense', 'income'] as const;
+export const CATEGORY_KINDS = ['expense', 'income', 'transfer'] as const;
 
 export const CATEGORY_COLORS = [
   '#2F855A', // green

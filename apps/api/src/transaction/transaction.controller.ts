@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { z } from 'zod';
 import { ok } from '../common/response';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -18,6 +18,7 @@ export class TransactionController {
     @Query('search') search?: string,
     @Query('accountId') accountId?: string,
     @Query('categoryId') categoryId?: string,
+    @Query('hasCategory') hasCategory?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('page') page?: string,
@@ -28,12 +29,22 @@ export class TransactionController {
         search,
         accountId,
         categoryId,
+        hasCategory: hasCategory === 'true' ? true : hasCategory === 'false' ? false : undefined,
         from,
         to,
         page: page ? parseInt(page, 10) : undefined,
         limit: limit ? parseInt(limit, 10) : undefined,
       }),
     );
+  }
+
+  @Post('apply-rules')
+  @HttpCode(200)
+  async applyRules(
+    @Param('householdId') householdId: string,
+    @CurrentUser() user: AccessTokenPayload,
+  ) {
+    return ok(await this.txs.applyRulesToAll(householdId, user.sub));
   }
 
   @Patch(':txId/category')

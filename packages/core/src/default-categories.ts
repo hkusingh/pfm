@@ -2,13 +2,21 @@ export type DefaultSubCategory = { name: string; sortOrder: number };
 export type DefaultCategory = {
   name: string;
   color: string;
-  kind: 'expense' | 'income';
+  kind: 'expense' | 'income' | 'transfer';
   isSystem: boolean;
   sortOrder: number;
   children: DefaultSubCategory[];
 };
 
 export const DEFAULT_CATEGORIES: DefaultCategory[] = [
+  {
+    name: 'Transfer',
+    color: '#718096',
+    kind: 'transfer',
+    isSystem: true,
+    sortOrder: -1,
+    children: [],
+  },
   {
     name: 'Income',
     color: '#2F855A',

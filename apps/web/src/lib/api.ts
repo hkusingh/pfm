@@ -42,10 +42,12 @@ async function doRefresh(): Promise<void> {
 
 async function request<T>(path: string, init?: RequestInit, allowRefresh = true): Promise<T> {
   const token = localStorage.getItem('accessToken');
+  const isFormData = init?.body instanceof FormData;
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
-      'Content-Type': 'application/json',
+      // Skip Content-Type for FormData — browser sets it with the multipart boundary.
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init?.headers,
     },
@@ -85,4 +87,7 @@ export const api = {
     request<T>(path, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: <T>(path: string, data?: unknown) =>
     request<T>(path, { method: 'DELETE', ...(data !== undefined ? { body: JSON.stringify(data) } : {}) }),
+  // Multipart upload — Content-Type is omitted so the browser sets the multipart boundary.
+  upload: <T>(path: string, formData: FormData) =>
+    request<T>(path, { method: 'POST', body: formData }),
 };
