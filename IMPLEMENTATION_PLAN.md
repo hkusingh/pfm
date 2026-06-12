@@ -11,7 +11,7 @@ acceptance bar for each.
 
 ## Status & Next Up  *(read this first)*
 
-**Last updated:** 2026-06-11.
+**Last updated:** 2026-06-12.
 
 **Done:**
 - **Epic 0 — Foundation / Shared Kernel** ✅ — monorepo scaffold, data model + migrations, auth
@@ -27,23 +27,36 @@ acceptance bar for each.
   flow. Merged to `main`.
 - **Epic 2 — Accounts & Manual Entry** ✅ (E2.1–E2.4) — manual account CRUD, per-account
   visibility, transaction CRUD with dedup hash, balance sync. Merged to `main`.
-- **Epic 4 — Categories & Sub-categories** ✅ (E4.1–E4.6) — default category tree seeded per household,
-  category CRUD (system-protected), category rules (auto-assign on import/entry), category tree UI
-  at `/categories`. Merged to `main`.
-- **Epic 5 — Transaction List** ✅ (E5.1–E5.2) — visibility-scoped transaction list with search +
-  filters + pagination, inline recategorize panel with optional "always categorize X as Y" rule.
-  UI at `/transactions`. Merged to `main`.
+- **Epic 4 — Categories & Sub-categories** ✅ (E4.1–E4.6) — default category tree seeded per
+  household, category CRUD (system-protected), category rules (auto-assign on import/entry), category
+  tree UI at `/categories`. Expanded default seed: Taxes, Travel, Utilities, Miscellaneous (with
+  subcategories); Income gains Salary / Bonus / Tax refund subcategories. Backfill logic on
+  `listCategories` ensures existing households receive new additions on next page load. Merged to `main`.
 - **Epic 3 — Document Upload & Import** ✅ (E3.1–E3.4) — CSV parser with quoted-field handling +
-  auto column-mapping heuristic; OFX 1.x (SGML) + OFX 2.x (XML) parser; two-step API
+  auto column-mapping heuristic; OFX 1.x (SGML) + OFX 2.x (XML) parser; PDF heuristic text
+  extraction (`pdf-parse` v1) with AI-fallback seam post-Epic 9; two-step API
   (`POST /import/preview` multipart → `POST /import/commit`); `LocalObjectStore` (Phase 1 local FS,
   swappable for GCS); dedup via `computeDedupHash`; category rules applied on commit; saved column
-  mappings recalled by fingerprint; 3-step wizard in AccountsPage UI (upload → map → done).
+  mappings recalled by fingerprint; import history list + per-batch delete (rolls back transactions);
+  3-step wizard in AccountsPage UI (upload → map → done). Merged to `main`.
+- **Epic 5 — Transaction List** ✅ (E5.1–E5.2 + extensions) — visibility-scoped transaction list
+  with search + filters + pagination; inline recategorize panel with optional "always categorize X as
+  Y" rule; inline new-category creation from the recategorize panel. **Extensions:** `transfer`
+  `CategoryKind` with system Transfer category + `TRANSFER_PATTERNS` auto-detection; Transactions
+  page split into *Needs review / Categorized / All* tabs with uncategorized count badge;
+  bulk auto-classify endpoint (`POST /transactions/apply-rules`) — learns from existing
+  categorizations in addition to explicit rules, batches DB updates per category;
+  `merchantRuleKey()` in `@pfm/core` strips trailing numeric bank-reference tokens (date codes,
+  sequence IDs) so e.g. "WF HOME MTG 06/09" and "WF HOME MTG 07/09" resolve to the same rule key.
   Merged to `main`.
 
 **Build right now (Wave 3 — remaining):**
 
-1. **Epic 6 — Budgets & Sinking Funds** (E6.1–E6.6) — depends on E4 ✅, E5 ✅.
-2. **Epic 9 — BYOK AI Categorization** (E9.1–E9.3) — depends on E3 ✅, E4 ✅.
+1. **Smarter auto-classify** — multi-signal scoring (word overlap ratio + character similarity +
+   `merchantRuleKey` prefix) with a configurable match threshold, replacing the current
+   exact/substring approach. Prerequisite for reliable bulk classification before Epic 9 AI arrives.
+2. **Epic 6 — Budgets & Sinking Funds** (E6.1–E6.6) — depends on E4 ✅, E5 ✅.
+3. **Epic 9 — BYOK AI Categorization** (E9.1–E9.3) — depends on E3 ✅, E4 ✅.
 
 **Then:** Wave 4 (Epic 7 Dashboard).
 
