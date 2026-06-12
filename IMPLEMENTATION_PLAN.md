@@ -50,15 +50,26 @@ acceptance bar for each.
   sequence IDs) so e.g. "WF HOME MTG 06/09" and "WF HOME MTG 07/09" resolve to the same rule key.
   Merged to `main`.
 
-**Build right now (Wave 3 — remaining):**
+- **Epic 6 — Budgets & Sinking Funds** ✅ (E6.1–E6.4) — monthly budgets per category/sub-category,
+  budget visualization (spend vs remaining bars), sinking funds with virtual reserve + amortization math
+  in `@pfm/core`, income tracking (received vs expected). Merged to `main`.
+- **Epic 7 — Dashboard & Reports** ✅ (E7.1–E7.2) — KPI cards, Spending by Category donut, Spending
+  Over Time bar chart, household/personal toggle, Dashboard→Transactions drill-through. Merged to `main`.
 
+**Build right now (Wave 5 — Epic 10):**
+
+**Epic 10 — Dashboard & Transaction UX Polish** (branch: `epic/10-dashboard-transactions-ux`):
+- **E10.1** User profile (`User.displayName`) + minimal Settings page + NavShell avatar badge.
+- **E10.2** Dashboard wireframe alignment — chart positions, KPI trend arrows, top-4+Other donut with multi-level Other drill-down, fix uncategorized transactions in Spending Over Time.
+- **E10.3** Transaction filter UX — default Month-to-Date, MTD/YTD quick filters, hierarchical category picker, monetary sum bar, `categoryIds` URL param support.
+- **E10.4** Uncategorized badge on Transactions nav item.
+- **E10.5** Transaction exclusion flag (`isExcluded`) — exclude from all financial aggregations; toggle in recategorize panel; audit record.
+
+**After Epic 10:**
 1. **Smarter auto-classify** — multi-signal scoring (word overlap ratio + character similarity +
    `merchantRuleKey` prefix) with a configurable match threshold, replacing the current
    exact/substring approach. Prerequisite for reliable bulk classification before Epic 9 AI arrives.
-2. **Epic 6 — Budgets & Sinking Funds** (E6.1–E6.6) — depends on E4 ✅, E5 ✅.
-3. **Epic 9 — BYOK AI Categorization** (E9.1–E9.3) — depends on E3 ✅, E4 ✅.
-
-**Then:** Wave 4 (Epic 7 Dashboard).
+2. **Epic 9 — BYOK AI Categorization** (E9.1–E9.4) — depends on E3 ✅, E4 ✅.
 
 **Deployment posture:** **local-first.** Develop and validate on your machine with seed/real data. Do
 **not** stand up a persistent hosted environment yet — see §5.2 for the local-first → smoke-deploy →
@@ -253,9 +264,10 @@ cross-member leakage for each state.**
 | Wave | Epics | Gate |
 |---|---|---|
 | **1** | Epic 0 — Foundation ✅ | Merged to `main`. |
-| **2** | Epic 8 ✅ (E8.1–E8.3 merged; E8.4 pending-small) · **Epic 1 (Household) · Epic 2 (Accounts) · Epic 4 (Categories)** | Epic 1 is the current gate — accounts and categories depend on it. |
-| **3** | Epic 3 (Import — **high priority**), Epic 5 (Transactions), Epic 6 (Budgets), **Epic 9 (BYOK AI)** | Stub upstream where needed. |
-| **4** | Epic 7 (Dashboard) | Integrates transactions + budgets; lands last. |
+| **2** | Epic 8 ✅ · Epic 1 ✅ (Household) · Epic 2 ✅ (Accounts) · Epic 4 ✅ (Categories) | All merged to `main`. |
+| **3** | Epic 3 ✅ · Epic 5 ✅ · Epic 6 ✅ (Budgets) · Epic 9 *(pending)* | E3, E5, E6 merged to `main`; E9 not yet started. |
+| **4** | Epic 7 (Dashboard) ✅ | Integrates transactions + budgets; merged to `main`. |
+| **5** | **Epic 10 (Dashboard & Transaction UX Polish)** | Wireframe alignment, user profile/settings, nav badge, transaction exclusion. |
 
 The rest of this section is the per-epic task list. Each story cites its PRD requirement and lists the
 concrete work and the acceptance bar. Sizes (S/M/L) carry over from the epic doc.
@@ -314,7 +326,7 @@ concrete work and the acceptance bar. Sizes (S/M/L) carry over from the epic doc
 
 ---
 
-### Epic 1 — Household & Membership  *(Wave 2)*  — depends on E0
+### Epic 1 — Household & Membership  *(Wave 2 ✅ merged to main)*  — depends on E0
 
 - **E1.1 Create household on signup** *(S, H-1)* — first user = **Owner** (`role:owner` +
   `isPrimaryOwner:true`); household has name, base currency (USD/EUR/GBP/INR), month-start.
@@ -328,7 +340,7 @@ concrete work and the acceptance bar. Sizes (S/M/L) carry over from the epic doc
 - **E1.5 Household settings** *(S, H-1)* — edit name/currency/month-start; member list with roles +
   last login. *(Member/role/visibility changes write AuditLog.)*
 
-### Epic 2 — Accounts & Manual Entry  *(Wave 2)*  — depends on E0
+### Epic 2 — Accounts & Manual Entry  *(Wave 2 ✅ merged to main)*  — depends on E0
 
 - **E2.1 Account model** *(M, A-1/A-2)* — account scoped to household+owner; sources `manual`/`import`
   (Plaid reserved Phase 2); balance/institution/mask; **per-account `currency`** (USD/EUR/GBP/INR,
@@ -340,7 +352,7 @@ concrete work and the acceptance bar. Sizes (S/M/L) carry over from the epic doc
   duplicates across repeat imports; never double-count.
 - **Phase 2 (do not build):** E2.P2a–d Plaid link/sync/health/joint-dedup — keep model seams only.
 
-### Epic 4 — Categories & Sub-categories  *(Wave 2)*  — depends on E0
+### Epic 4 — Categories & Sub-categories  *(Wave 2 ✅ merged to main)*  — depends on E0
 
 - **E4.1 Default categories seed** *(S, C-1)* — sensible defaults per household; protected Income.
 - **E4.2 Manage categories** *(M, C-2)* — add/rename/recolor/reorder/delete; reachable from
@@ -358,7 +370,7 @@ concrete work and the acceptance bar. Sizes (S/M/L) carry over from the epic doc
   bulk-reassign and expandable CategoryPicker; "Delete category" unlocks at 0 transactions.
   No new API endpoints (reuses existing transaction list + PATCH category endpoints).
 
-### Epic 3 — Document Upload & Import  *(Wave 3 — high priority, the Phase 1 data path)*  — depends on E2
+### Epic 3 — Document Upload & Import  *(Wave 3 ✅ merged to main)*  — depends on E2
 
 - **E3.1 Upload & parse** *(M, A-1)* — accept CSV/OFX/QFX to **encrypted** store (GCS); parse rows;
   report row count. (PDF parsing out of scope.) Parsing runs **inline in the import service** for Phase 1
@@ -372,7 +384,7 @@ concrete work and the acceptance bar. Sizes (S/M/L) carry over from the epic doc
 - **E3.4 Enrich, dedup & commit** *(M, A-1)* — enrich/auto-categorize rows; skip dupes via `dedupHash`;
   commit; report imported/skipped counts.
 
-### Epic 5 — Transactions  *(Wave 3)*  — depends on E2, E4
+### Epic 5 — Transactions  *(Wave 3 ✅ merged to main)*  — depends on E2, E4
 
 - **E5.1 Transaction list** *(M, D-4)* — visibility-scoped list across accessible accounts; search +
   filter (date/account/category); pagination.
@@ -381,7 +393,7 @@ concrete work and the acceptance bar. Sizes (S/M/L) carry over from the epic doc
 - **E5.3 Reserve-funded payment marking** *(M, B-6 — depends on E6.3)* — a txn matching a sinking-fund
   item is linked + badged ("annual · from reserve"); auto-detected with user confirm/override.
 
-### Epic 6 — Budgets & Sinking Funds  *(Wave 3)*  — depends on E4
+### Epic 6 — Budgets & Sinking Funds  *(Wave 3 ✅ merged to main)*  — depends on E4
 
 - **E6.1 Monthly budgets** *(M, B-1)* — set budget per category/sub-category; spent vs remaining for
   current period; sub-budgets roll up.
@@ -395,7 +407,7 @@ concrete work and the acceptance bar. Sizes (S/M/L) carry over from the epic doc
 - **E6.4 Income tracking** *(S, B-4)* — received vs expected per income (sub-)category; not a spend cap.
 - **Phase 2 (do not build):** B-7 Actual/Smoothed toggle.
 
-### Epic 7 — Dashboard & Reports  *(Wave 4 — lands last)*  — depends on E5, E6
+### Epic 7 — Dashboard & Reports  *(Wave 4 ✅ merged to main)*  — depends on E5, E6
 
 - **E7.1 Dashboard KPIs & view toggle** *(M, D-1/D-2)* — KPIs (income, spending, budget remaining);
   budget vs actual; household/personal toggle (personal = own accounts only; household respects
@@ -416,7 +428,7 @@ concrete work and the acceptance bar. Sizes (S/M/L) carry over from the epic doc
 - **Phase 2 (do not build):** custom chart **builder**, net worth charts, rental cash-flow report. (E7.4
   is a fixed report, not the builder.)
 
-### Epic 8 — Platform Access & Site Admin  *(Wave 2 — **E8.1–E8.3 ✅ merged to main**)*  — depends on E0
+### Epic 8 — Platform Access & Site Admin  *(Wave 2 ✅ merged to main)*  — depends on E0
 
 **Goal:** Phase 1 is **invitation-only**. Only people the site admin invites can create an account.
 The mechanism is a policy toggle that later opens to beta (household-to-household invites) and then GA.
@@ -433,14 +445,10 @@ The mechanism is a policy toggle that later opens to beta (household-to-househol
 - **E8.3 Admin area** ✅ — `/admin/*` (React, guarded by `AdminLayout` + `SiteAdminGuard`): invite
   management (send/resend/revoke), user list, registration-policy toggle. Dashboard shows "Admin" nav
   link for site admins only.
-- **E8.4 Beta & GA policy switches** *(S — pending)* — `beta_invite` lets an existing household issue
+- **E8.4 Beta & GA policy switches** ✅ — `beta_invite` lets an existing household issue
   signup-invites with a quota; `open` requires no invite.
-  - **Quota decision:** 5 pending invites per household (`usedAt IS NULL AND expiresAt > now`); slot
-    reopens on acceptance or expiry. Store as `RegistrationPolicy.householdInviteQuota Int @default(5)`.
-  - **Work remaining:** (a) schema migration adding `householdInviteQuota`; (b) fix
-    `AuthService.signup()` — `open` skips invite check, `beta_invite` validates household-issued invite;
-    (c) expose + edit quota in `GET/PATCH /admin/registration-policy` and PolicyPage UI;
-    (d) enforce quota at household invite creation (wired in Epic 1 when household invite endpoint exists).
+  - **Quota:** 5 pending invites per household (`usedAt IS NULL AND expiresAt > now`); slot reopens on
+    acceptance or expiry. `RegistrationPolicy.householdInviteQuota Int @default(5)`.
   - Note: `SignupInvite.issuedByAdminId` is currently required — make it nullable for household-issued
     invites, or rely on `issuedByHouseholdId` presence.
 
@@ -465,6 +473,31 @@ slice into Phase 1; the broader AI platform remains Phase 2.
   a "suggest category" action (extends E4.6/E5.2), call the user's LLM to suggest a category; user
   confirms. On confirm, write a `CategoryRule` so the same merchant is never sent to the LLM twice
   (cache + cost control). Graceful fallback on missing key / provider error.
+
+### Epic 10 — Dashboard & Transaction UX Polish  *(Wave 5 — branch: `epic/10-dashboard-transactions-ux`)*  — depends on E5 ✅, E7 ✅
+
+- **E10.1 User profile & Settings page** *(M)*
+  - Schema: `User.displayName String?` (migration). `Transaction.isExcluded Boolean @default(false)` (migration — included here for single migration run).
+  - API: `PATCH /auth/profile` → `{ displayName }` → save + return updated user.
+  - Web: `/settings` page (Profile section). `NavShell` gains `userInitial?: string` prop — circular avatar badge top-right of topbar, links to `/settings`. DashboardPage derives initial from `displayName` (fallback: email first char).
+
+- **E10.2 Dashboard wireframe alignment** *(M)*
+  - Contracts: `DashboardSummary` gains `previousIncomeMinor?` and `previousSpendingMinor?`.
+  - API: `dashboard.service.ts getSummary()` — compute prior calendar-month totals with same visibility scope; add to response. `getSpendingOverTime()` — fix to include uncategorized transactions (classify by sign, not by category join); filter `isExcluded = true`.
+  - Web: Swap chart grid (Spending Over Time LEFT, Spending by Category RIGHT). KPI cards: trend arrows ▲/▼ + percentage vs prior month; "No prior data" fallback. Donut: top-4+Other (5 items). `DrillState` union type for Other drill-down level (shows top-4 within Other + nested Other). Click handlers navigate to `/transactions` with `categoryId` or `categoryIds` params.
+
+- **E10.3 Transaction filter UX** *(M)*
+  - Contracts: `TransactionListResponse` gains `totalAmountMinor: number`. Request gains `categoryIds?: string` (comma-separated).
+  - API: `transaction.service.ts` — parallel aggregate for `totalAmountMinor`; parse `categoryIds`; all aggregations filter `isExcluded = false`.
+  - UI: `CategoryFilterPicker` component in `@pfm/ui` (expandable hierarchical filter, "All categories" option). `TransactionsPage`: default MTD date range; MTD/YTD quick-filter buttons; use `CategoryFilterPicker`; monetary sum bar above table; parse `categoryIds` from URL.
+
+- **E10.4 Uncategorized badge** *(S)*
+  - NavShell `navItems` extended with optional `badge?: number`. App-shell fetches uncategorized count and passes it as badge to Transactions nav item.
+
+- **E10.5 Transaction exclusion** *(M)*
+  - API: `PATCH /households/{hid}/transactions/{id}/exclude` → `{ isExcluded }` → update + audit record.
+  - All financial aggregation queries add `where.isExcluded = false`.
+  - UI: "Exclude from budgets & reports" toggle in the recategorize panel. Excluded transactions shown with ⊘ indicator in the table.
 
 ---
 
