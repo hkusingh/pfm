@@ -34,6 +34,51 @@ export function merchantRuleKey(raw: string | null | undefined): string {
 }
 
 /**
+ * Similarity score between two merchant rule keys — 0 (no match) to 1 (exact).
+ * Combines three signals and returns the maximum:
+ *
+ *   1. Word Jaccard       — shared words / all words
+ *   2. Containment        — what fraction of the shorter string's words appear in the longer
+ *   3. Char-prefix ratio  — longest common character prefix (spaces ignored) / max char length
+ *                           catches "WAL MART" ↔ "WALMART" and partial abbreviations
+ *
+ * Both inputs should already be processed by `merchantRuleKey`.
+ */
+export function merchantSimilarityScore(a: string, b: string): number {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+
+  const aWords = a.split(' ').filter(Boolean);
+  const bWords = b.split(' ').filter(Boolean);
+  const aSet = new Set(aWords);
+  const bSet = new Set(bWords);
+
+  // Signal 1: Word Jaccard
+  const intersectionCount = aWords.filter((w) => bSet.has(w)).length;
+  const unionCount = new Set([...aWords, ...bWords]).size;
+  const jaccard = intersectionCount / unionCount;
+
+  // Signal 2: Containment — fraction of the shorter string's words found in the longer
+  const shorter = aWords.length <= bWords.length ? aWords : bWords;
+  const longerSet = aWords.length <= bWords.length ? bSet : aSet;
+  const containment = shorter.filter((w) => longerSet.has(w)).length / shorter.length;
+
+  // Signal 3: Character prefix ratio (spaces stripped)
+  const aChars = a.replace(/ /g, '');
+  const bChars = b.replace(/ /g, '');
+  let prefixLen = 0;
+  while (prefixLen < aChars.length && prefixLen < bChars.length && aChars[prefixLen] === bChars[prefixLen]) {
+    prefixLen++;
+  }
+  const charPrefix = prefixLen / Math.max(aChars.length, bChars.length);
+
+  return Math.max(jaccard, containment, charPrefix);
+}
+
+/** Minimum score from `merchantSimilarityScore` to consider two merchants the same. */
+export const MERCHANT_MATCH_THRESHOLD = 0.65;
+
+/**
  * Deterministic dedup key: SHA-256 of account|date|amountMinor|normalizedMerchant.
  * Stored on Transaction.dedupHash. Uniqueness is enforced per-account via @@unique([accountId, dedupHash]).
  */

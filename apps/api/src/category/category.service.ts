@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { prisma } from '@pfm/db';
 import { DEFAULT_CATEGORIES } from '@pfm/core';
-import { merchantRuleKey } from '@pfm/core';
+import { merchantRuleKey, merchantSimilarityScore, MERCHANT_MATCH_THRESHOLD } from '@pfm/core';
 import type {
   CreateCategoryBody,
   UpdateCategoryBody,
@@ -94,68 +94,6 @@ export class CategoryService {
   // ── List ──────────────────────────────────────────────────────────────────
 
   async listCategories(householdId: string) {
-    const count = await prisma.category.count({ where: { householdId } });
-    if (count === 0) {
-      await this.seedDefaults(householdId);
-    } else {
-      // Backfill any top-level categories that were added to DEFAULT_CATEGORIES after this
-      // household was first seeded. Checks by name so re-runs are safe.
-      const existingNames = new Set(
-        (await prisma.category.findMany({ where: { householdId, parentId: null }, select: { name: true } }))
-          .map((c) => c.name),
-      );
-      for (const cat of DEFAULT_CATEGORIES) {
-        if (!existingNames.has(cat.name)) {
-          // New top-level category — create parent + all children
-          const parent = await prisma.category.create({
-            data: {
-              householdId,
-              name: cat.name,
-              color: cat.color,
-              kind: cat.kind,
-              isSystem: cat.isSystem,
-              sortOrder: cat.sortOrder,
-            },
-          });
-          for (const child of cat.children) {
-            await prisma.category.create({
-              data: {
-                householdId,
-                parentId: parent.id,
-                name: child.name,
-                kind: cat.kind,
-                isSystem: false,
-                sortOrder: child.sortOrder,
-              },
-            });
-          }
-        } else if (cat.children.length > 0) {
-          // Category exists — backfill any missing children (e.g. Income gaining subcategories)
-          const parent = await prisma.category.findFirst({
-            where: { householdId, name: cat.name, parentId: null },
-            include: { children: { select: { name: true } } },
-          });
-          if (parent) {
-            const existingChildNames = new Set((parent as typeof parent & { children: { name: string }[] }).children.map((c) => c.name));
-            for (const child of cat.children) {
-              if (!existingChildNames.has(child.name)) {
-                await prisma.category.create({
-                  data: {
-                    householdId,
-                    parentId: parent.id,
-                    name: child.name,
-                    kind: cat.kind,
-                    isSystem: false,
-                    sortOrder: child.sortOrder,
-                  },
-                });
-              }
-            }
-          }
-        }
-      }
-    }
-
     const rows = await prisma.category.findMany({
       where: { householdId },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
@@ -367,11 +305,15 @@ export class CategoryService {
     const ruleKey = merchantRuleKey(merchantRaw);
     if (!ruleKey) return null;
 
-    // User-defined rules take precedence
+    // User-defined rules — return the highest-scoring match above threshold
     const rules = await prisma.categoryRule.findMany({ where: { householdId } });
+    let bestRuleScore = 0;
+    let bestRuleCatId: string | null = null;
     for (const rule of rules) {
-      if (ruleKey.includes(rule.merchantMatch) || rule.merchantMatch.includes(ruleKey)) return rule.categoryId;
+      const s = merchantSimilarityScore(ruleKey, rule.merchantMatch);
+      if (s > bestRuleScore) { bestRuleScore = s; bestRuleCatId = rule.categoryId; }
     }
+    if (bestRuleScore >= MERCHANT_MATCH_THRESHOLD && bestRuleCatId) return bestRuleCatId;
 
     // Auto-detect credit card payments, bank transfers, and inter-account movements
     if (TRANSFER_PATTERNS.some((p) => p.test(ruleKey))) {

@@ -218,6 +218,67 @@ flowchart LR
 </ul>
 <div class="warn note"><b>Rule:</b> if the account can't be matched with confidence, the user must pick before commit — no silent assignment.</div>
 
+<!-- 4a CLASSIFICATION ENGINE -->
+<h2 id="classify">4a. Transaction Categorization &amp; Auto-Classification Engine</h2>
+<p>Implemented in <code>packages/core/src/dedup.ts</code>, <code>apps/api/src/category/category.service.ts</code>, and <code>apps/api/src/transaction/transaction.service.ts</code>. Runs after import (inline, Phase 1) and on-demand via the "Auto-classify" action on the Transactions page.</p>
+
+<h3>Merchant normalization pipeline</h3>
+<p>Every merchant string passes through two normalization steps before any matching occurs:</p>
+<ol>
+  <li><b><code>normalizeMerchant(raw)</code></b> — upper-case; strip legal suffixes (LLC, INC, CORP, LTD); collapse whitespace; remove all non-alphanumeric characters. Result: a clean, comparable token string.</li>
+  <li><b><code>merchantRuleKey(raw)</code></b> — runs <code>normalizeMerchant</code> first, then strips any trailing tokens that are <em>purely numeric</em>. Banks routinely append date codes, reference numbers, or store IDs to merchant names (e.g. <code>"WF HOME MTG 06/09"</code>, <code>"AMAZON MARKETPLACE 123"</code>). After normalization these become <code>"WF HOME MTG 0609"</code> and <code>"AMAZON MARKETPLACE 123"</code>; stripping the trailing numeric token gives <code>"WF HOME MTG"</code> and <code>"AMAZON MARKETPLACE"</code> — stable keys that match across months and branches.</li>
+</ol>
+<div class="warn note"><b>Rule:</b> all rule storage and rule matching uses <code>merchantRuleKey</code>, not the raw or normalized string. This ensures a rule created from one month's import also fires for subsequent months' imports of the same merchant.</div>
+
+<h3>Multi-signal similarity scoring</h3>
+<p><code>merchantSimilarityScore(a, b): number</code> — both inputs should already be processed by <code>merchantRuleKey</code>. Returns a value from 0 (no match) to 1 (exact). Three signals are computed; the <em>maximum</em> is returned so a strong match on any one signal is sufficient:</p>
+<table>
+  <thead><tr><th>Signal</th><th>Formula</th><th>Catches</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>Word Jaccard</b></td>
+      <td><code>|A ∩ B| / |A ∪ B|</code></td>
+      <td>Reordered words, extra tokens, synonymous suffixes</td>
+    </tr>
+    <tr>
+      <td><b>Containment</b></td>
+      <td>fraction of the <em>shorter</em> string's words found in the longer</td>
+      <td>One name is a prefix/abbreviation of the other; partial matches</td>
+    </tr>
+    <tr>
+      <td><b>Char-prefix ratio</b></td>
+      <td>shared leading characters (spaces stripped) / max char length</td>
+      <td><code>"WAL MART"</code> ↔ <code>"WALMART"</code>; truncated names; OCR noise</td>
+    </tr>
+  </tbody>
+</table>
+<p><b>Threshold:</b> <code>MERCHANT_MATCH_THRESHOLD = 0.65</code> — a pair scoring at or above this is considered the same merchant. Tunable; stored as an exported constant so a future UI setting or per-household override can adjust it.</p>
+
+<h3>Three-stage rule resolution</h3>
+<p>Used in <code>applyRulesToAll</code> (bulk classify) and <code>applyRules</code> (single transaction). Stages run in priority order; the first match above threshold wins.</p>
+<ol>
+  <li>
+    <b>Explicit rules</b> (<code>CategoryRule</code> table) — user-defined merchant → category mappings created via "Always categorize <em>merchant</em> as <em>X</em>" in the recategorize panel. The highest-scoring rule above threshold is used. Rules are stored as <code>merchantRuleKey</code> strings so a single rule covers all reference-code variants of that merchant.
+  </li>
+  <li>
+    <b>Learned from history</b> (bulk classify only) — at classify time, all already-categorized transactions in the household are aggregated into a <code>Map&lt;merchantRuleKey, most-used categoryId&gt;</code>. The highest-scoring entry above threshold is used. Effect: one manual categorization of a merchant teaches the system for all future imports of that merchant — even without an explicit rule.
+  </li>
+  <li>
+    <b>Transfer pattern detection</b> — a list of regexes (<code>TRANSFER_PATTERNS</code> in <code>category.service.ts</code>) matches common inter-account payment strings (ZELLE, VENMO, CREDIT CARD PAYMENT, AUTOPAY, ONLINE TRANSFER, etc.). Matched transactions are routed to the system <em>Transfer</em> category automatically, keeping them out of expense totals.
+  </li>
+</ol>
+<p>If no stage produces a match, the transaction remains uncategorized and surfaces in the "Needs review" tab for manual action.</p>
+
+<h3>Bulk classify performance</h3>
+<p><code>applyRulesToAll</code> is designed to be O(transactions × rules) in memory, with only 4 parallel DB queries regardless of transaction count:</p>
+<ol>
+  <li>All uncategorized transactions for visible accounts.</li>
+  <li>All <code>CategoryRule</code> rows for the household.</li>
+  <li>The system Transfer category.</li>
+  <li>All already-categorized transactions (for the learned map).</li>
+</ol>
+<p>Resolution runs entirely in memory; results are then bulk-written with one <code>updateMany</code> per distinct target category — not one update per transaction.</p>
+
 <!-- 5 PLAID (Phase 2) -->
 <h2 id="plaid">5. Plaid Integration <span style="font-size:13px;color:#B9770E;">(Phase 2 — forward design)</span></h2>
 <p><i>Deferred to Phase 2. Documented here so Phase 1 data structures (account source, dedup, categories) are built to accommodate it without rework.</i> Plaid handles bank authentication; PFM never sees or stores bank credentials. The client uses Plaid Link; the backend exchanges and stores only the access token (encrypted).</p>

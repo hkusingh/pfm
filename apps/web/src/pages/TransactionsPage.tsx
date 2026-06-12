@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { NavShell, Card } from '@pfm/ui';
+import { NavShell, Card, CategoryPicker, type PickerCategory } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
@@ -21,6 +21,8 @@ type TransactionItem = {
   categoryId: string | null;
   categoryName: string | null;
   categoryColor: string | null;
+  hasSplit: boolean;
+  splits: Array<{ id: string; categoryId: string | null; categoryName: string | null; amountMinor: number }>;
   dedupHash: string;
   createdAt: string;
 };
@@ -181,7 +183,7 @@ export function TransactionsPage() {
 
   // ── Recategorize panel ───────────────────────────────────────────────────
   const [recatTx, setRecatTx] = useState<TransactionItem | null>(null);
-  const [recatCatId, setRecatCatId] = useState<string>('');
+  const [recatCatId, setRecatCatId] = useState<string | null>(null);
   const [recatCreateRule, setRecatCreateRule] = useState(false);
   const [recatError, setRecatError] = useState('');
 
@@ -194,7 +196,7 @@ export function TransactionsPage() {
 
   function openRecat(tx: TransactionItem) {
     setRecatTx(tx);
-    setRecatCatId(tx.categoryId ?? '');
+    setRecatCatId(tx.categoryId ?? null);
     setRecatCreateRule(false);
     setRecatError('');
     setShowNewCat(false);
@@ -234,7 +236,7 @@ export function TransactionsPage() {
       if (!household || !recatTx) throw new Error('missing');
       return api.patch<TransactionItem>(
         `/households/${household.id}/transactions/${recatTx.id}/category`,
-        { categoryId: recatCatId || null, createRule: recatCreateRule },
+        { categoryId: recatCatId, createRule: recatCreateRule },
       );
     },
     onSuccess: () => {
@@ -467,7 +469,7 @@ export function TransactionsPage() {
                       className={`hover:bg-gray-50 ${
                         categoryKind(tx.categoryId) === 'transfer'
                           ? 'bg-gray-50 opacity-70'
-                          : !tx.categoryId
+                          : !tx.categoryId && !tx.hasSplit
                           ? 'bg-amber-50'
                           : ''
                       }`}
@@ -482,11 +484,23 @@ export function TransactionsPage() {
                         {tx.accountName}
                       </td>
                       <td className="px-4 py-2.5">
-                        <CategoryPill
-                          name={tx.categoryName}
-                          color={tx.categoryColor}
-                          onClick={() => openRecat(tx)}
-                        />
+                        {tx.hasSplit ? (
+                          <button
+                            onClick={() => navigate(`/transactions/${tx.id}/split`)}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-violet-100 text-violet-700 hover:bg-violet-200"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+                              <path fillRule="evenodd" d="M8 1a.75.75 0 0 1 .75.75V6h4.5a.75.75 0 0 1 0 1.5h-4.5v4.25a.75.75 0 0 1-1.5 0V7.5H2.75a.75.75 0 0 1 0-1.5h4.5V1.75A.75.75 0 0 1 8 1Z" clipRule="evenodd" />
+                            </svg>
+                            Split ({tx.splits.length})
+                          </button>
+                        ) : (
+                          <CategoryPill
+                            name={tx.categoryName}
+                            color={tx.categoryColor}
+                            onClick={() => openRecat(tx)}
+                          />
+                        )}
                       </td>
                       <td className={`px-4 py-2.5 text-right font-medium tabular-nums ${
                         tx.amountMinor >= 0 ? 'text-emerald-600' : 'text-gray-900'
@@ -507,21 +521,11 @@ export function TransactionsPage() {
 
                               <div className="space-y-1">
                                 <label className="block text-xs font-medium text-gray-600">Category</label>
-                                <select
+                                <CategoryPicker
+                                  categories={categories as PickerCategory[]}
                                   value={recatCatId}
-                                  onChange={(e) => setRecatCatId(e.target.value)}
-                                  className="block w-full h-[32px] rounded-md border border-gray-300 px-2 text-xs bg-white"
-                                >
-                                  <option value="">Uncategorized</option>
-                                  {categories.map((parent) => (
-                                    <optgroup key={parent.id} label={parent.name}>
-                                      <option value={parent.id}>{parent.name}</option>
-                                      {(parent.children ?? []).map((child) => (
-                                        <option key={child.id} value={child.id}>{'  ↳ '}{child.name}</option>
-                                      ))}
-                                    </optgroup>
-                                  ))}
-                                </select>
+                                  onChange={setRecatCatId}
+                                />
                               </div>
 
                               {!showNewCat ? (
@@ -614,13 +618,19 @@ export function TransactionsPage() {
 
                               {recatError && <p className="text-xs text-red-600">{recatError}</p>}
 
-                              <div className="flex gap-2 pt-1">
+                              <div className="flex gap-2 pt-1 flex-wrap">
                                 <button
                                   onClick={() => recatMutation.mutate()}
                                   disabled={recatMutation.isPending}
                                   className="px-3 py-1 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
                                 >
                                   Save
+                                </button>
+                                <button
+                                  onClick={() => navigate(`/transactions/${tx.id}/split`)}
+                                  className="px-3 py-1 text-xs font-medium border border-violet-300 text-violet-700 rounded-md hover:bg-violet-50"
+                                >
+                                  Split transaction
                                 </button>
                                 <button
                                   onClick={() => setRecatTx(null)}

@@ -168,6 +168,11 @@ flowchart TD
   - AC: Deleting a category with transactions prompts reassign/merge; deletion cannot orphan transactions; parent with children prompts handling of children.
 - **E4.6 — Recategorize & rules.** *(PRD: C-6 · Size: M)*
   - AC: Change a transaction's category; optionally create a merchant rule that auto-applies going forward.
+- **E4.7 — Safe deletion UX: reclassify page.** *(PRD: C-5 · Size: S · Wave 3)*
+  - AC: Deleting a category with transactions navigates to `/categories/:id/reclassify` listing all affected transactions; user can individually or bulk-reassign via checkbox + category picker; "Delete category" button unlocks once transaction count reaches 0.
+  - AC: Back link returns to Categories page without deleting.
+  - No new API endpoints — reuses `GET /transactions?categoryId`, `PATCH /:txId/category`, and `DELETE /categories/:id`.
+  - AC: Category picker shows top-level categories by default; expand chevron reveals sub-categories inline.
 
 ---
 
@@ -211,6 +216,7 @@ flowchart TD
   - AC: KPIs (income, spending, budget remaining); budget vs. actual; household/personal toggle (personal = own accounts only; household respects visibility).
 - **E7.2 — Default charts.** *(PRD: D-3 · Size: M)*
   - AC: Spending by category, spending over time (**6-month default**, 3M/6M toggle), income vs. expenses, budget vs. actual; interactive (hover amounts); visibility-aware; show actuals; **currency-aware** (base-currency roll-ups only; non-base accounts in a separate per-currency breakdown, never blended/converted).
+  - AC (E7.2b): Clicking a pie slice navigates to TransactionsPage pre-filtered to that category and the current month (`?categoryId=<id>&from=<first-of-month>&to=<today>`); user can adjust the date range; "← Back to Dashboard" breadcrumb present. TransactionsPage reads `categoryId`/`from`/`to` from URL search params as initial filter values. Build in the same story as the chart.
 - **E7.3 — Reserve-funded marking on spending-over-time.** *(PRD: B-6 · Size: S)*
   - AC: In the Actual view, the reserve-funded portion of a month is a distinct, labeled segment so the spike is self-explaining.
 - **E7.4 — Period comparison report.** *(PRD: D-5 · Size: M)*

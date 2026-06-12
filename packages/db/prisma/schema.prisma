@@ -239,10 +239,13 @@ model Transaction {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  account     Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  category    Category?    @relation(fields: [categoryId], references: [id])
-  sinkingFund SinkingFund? @relation(fields: [sinkingFundId], references: [id])
-  importBatch ImportBatch? @relation(fields: [importBatchId], references: [id])
+  hasSplit           Boolean   @default(false)
+
+  account     Account           @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  category    Category?         @relation(fields: [categoryId], references: [id])
+  sinkingFund SinkingFund?      @relation(fields: [sinkingFundId], references: [id])
+  importBatch ImportBatch?      @relation(fields: [importBatchId], references: [id])
+  splits      TransactionSplit[]
 
   @@unique([accountId, dedupHash])
   @@index([accountId])
@@ -275,12 +278,25 @@ model Category {
   parent       Category?      @relation("CategoryParent", fields: [parentId], references: [id])
   children     Category[]     @relation("CategoryParent")
   transactions Transaction[]
+  splits       TransactionSplit[]
   rules        CategoryRule[]
   budgets      Budget[]
   sinkingFunds SinkingFund[]
 
   @@index([householdId])
   @@index([parentId])
+}
+
+model TransactionSplit {
+  id            String       @id @default(cuid())
+  transactionId String
+  categoryId    String?
+  amountMinor   Int
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  category    Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([transactionId])
 }
 
 model CategoryRule {

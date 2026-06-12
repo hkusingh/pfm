@@ -100,54 +100,47 @@ export function CategoriesPage() {
     onError: (err) => setFormError(err instanceof ApiException ? err.message : 'Failed to save.'),
   });
 
-  // ── Delete / reassign ────────────────────────────────────────────────────
+  // ── Delete ───────────────────────────────────────────────────────────────
 
   const [deletingCat, setDeletingCat] = useState<Category | null>(null);
-  const [deleteReassignTo, setDeleteReassignTo] = useState<string>('');
   const [deleteError, setDeleteError] = useState('');
-  const [txCountForDelete, setTxCountForDelete] = useState<number | null>(null);
 
-  async function startDelete(cat: Category) {
-    if (!household) return;
+  function openDeletePanel(cat: Category) {
     setDeletingCat(cat);
-    setDeleteReassignTo('');
     setDeleteError('');
-    setTxCountForDelete(null);
-
-    // Probe: try delete with no reassignTo to find out if there are transactions
-    try {
-      await api.delete(`/households/${household.id}/categories/${cat.id}`, {});
-      qc.invalidateQueries({ queryKey: ['categories'] });
-      setDeletingCat(null);
-    } catch (err) {
-      if (err instanceof ApiException && err.message.includes('CATEGORY_HAS_TRANSACTIONS')) {
-        try {
-          const parsed = JSON.parse(err.message);
-          setTxCountForDelete(parsed.transactionCount ?? null);
-        } catch {
-          setTxCountForDelete(null);
-        }
-      } else {
-        setDeleteError(err instanceof ApiException ? err.message : 'Failed to delete.');
-      }
-    }
   }
 
-  const confirmDeleteMutation = useMutation({
+  function closeDeletePanel() {
+    setDeletingCat(null);
+    setDeleteError('');
+  }
+
+  const deleteMutation = useMutation({
     mutationFn: async () => {
       if (!household || !deletingCat) throw new Error('No target');
-      return api.delete(`/households/${household.id}/categories/${deletingCat.id}`, {
-        reassignTo: deleteReassignTo || null,
-      });
+      return api.delete(`/households/${household.id}/categories/${deletingCat.id}`, {});
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['categories'] });
-      setDeletingCat(null);
-      setTxCountForDelete(null);
-      setDeleteError('');
+      closeDeletePanel();
     },
-    onError: (err) => setDeleteError(err instanceof ApiException ? err.message : 'Failed to delete.'),
+    onError: (err) => {
+      if (err instanceof ApiException && err.message.includes('CATEGORY_HAS_TRANSACTIONS')) {
+        // Navigate to the reclassify page — the user handles reassignment there before deleting.
+        navigate(
+          `/categories/${deletingCat!.id}/reclassify?name=${encodeURIComponent(deletingCat!.name)}`,
+        );
+        closeDeletePanel();
+      } else {
+        setDeleteError(err instanceof ApiException ? err.message : 'Failed to delete.');
+      }
+    },
   });
+
+  // Permanent structural blocker (has children / is system) — hide the Delete button.
+  const deleteIsBlocked =
+    deleteError.toLowerCase().includes('sub-categor') ||
+    deleteError.toLowerCase().includes('system categor');
 
   // ── Nav ──────────────────────────────────────────────────────────────────
 
@@ -178,6 +171,15 @@ export function CategoriesPage() {
   }
 
   const formIsOpen = formName !== '' || editingId !== null;
+
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  function toggleCollapsed(id: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
 
   return (
     <NavShell navItems={navItems} userEmail={me?.email ?? ''} onSignOut={handleSignOut}>
@@ -210,7 +212,19 @@ export function CategoriesPage() {
                     <>
                       {/* Parent row */}
                       <tr key={cat.id} className="hover:bg-gray-50">
-                        <td className="px-3 py-2.5 text-gray-300 cursor-grab select-none text-center">⋮⋮</td>
+                        <td className="px-3 py-2.5 text-center w-8">
+                          {(cat.children ?? []).length > 0 && (
+                            <button
+                              onClick={() => toggleCollapsed(cat.id)}
+                              className="w-5 h-5 flex items-center justify-center rounded text-gray-500 hover:text-gray-800 hover:bg-gray-100"
+                              style={{ transform: collapsed.has(cat.id) ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 150ms' }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                                <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          )}
+                        </td>
                         <td className="px-3 py-2.5">
                           <span className="flex items-center gap-2">
                             <ColorDot color={cat.color} />
@@ -246,7 +260,7 @@ export function CategoriesPage() {
                                 Color
                               </button>
                               <button
-                                onClick={() => startDelete(cat)}
+                                onClick={() => openDeletePanel(cat)}
                                 className="text-xs text-red-500 hover:text-red-700"
                               >
                                 Delete
@@ -256,8 +270,8 @@ export function CategoriesPage() {
                         </td>
                       </tr>
 
-                      {/* Sub-category rows */}
-                      {(cat.children ?? []).map((child) => (
+                      {/* Sub-category rows + add link — hidden when collapsed */}
+                      {!collapsed.has(cat.id) && (cat.children ?? []).map((child) => (
                         <tr key={child.id} className="hover:bg-gray-50">
                           <td className="px-3 py-2" />
                           <td className="px-3 py-2 pl-10 text-gray-500">
@@ -278,7 +292,7 @@ export function CategoriesPage() {
                                 Rename
                               </button>
                               <button
-                                onClick={() => startDelete(child)}
+                                onClick={() => openDeletePanel(child)}
                                 className="text-xs text-red-500 hover:text-red-700"
                               >
                                 Delete
@@ -288,18 +302,19 @@ export function CategoriesPage() {
                         </tr>
                       ))}
 
-                      {/* Add sub-category link */}
-                      <tr key={`${cat.id}-add`} className="hover:bg-gray-50">
-                        <td className="px-3 py-1.5" />
-                        <td className="px-3 py-1.5 pl-10" colSpan={3}>
-                          <button
-                            onClick={() => openAdd(cat.id, cat.kind)}
-                            className="text-xs text-blue-500 hover:underline"
-                          >
-                            + Add {cat.kind === 'income' ? 'income ' : ''}sub-category
-                          </button>
-                        </td>
-                      </tr>
+                      {!collapsed.has(cat.id) && (
+                        <tr key={`${cat.id}-add`} className="hover:bg-gray-50">
+                          <td className="px-3 py-1.5" />
+                          <td className="px-3 py-1.5 pl-10" colSpan={3}>
+                            <button
+                              onClick={() => openAdd(cat.id, cat.kind)}
+                              className="text-xs text-blue-500 hover:underline"
+                            >
+                              + Add {cat.kind === 'income' ? 'income ' : ''}sub-category
+                            </button>
+                          </td>
+                        </tr>
+                      )}
                     </>
                   ))}
 
@@ -314,7 +329,7 @@ export function CategoriesPage() {
               </table>
             </Card>
 
-            {/* Right column — add/edit form + delete panel */}
+            {/* Right column — add/edit form */}
             <div className="space-y-4">
 
               {/* Add / edit form */}
@@ -406,62 +421,6 @@ export function CategoriesPage() {
                   </div>
                 </form>
               </Card>
-
-              {/* Delete confirmation panel */}
-              {deletingCat && (
-                <Card padding="md">
-                  <p className="text-sm font-semibold text-red-600 mb-2">
-                    Delete &ldquo;{deletingCat.name}&rdquo;?
-                  </p>
-                  {txCountForDelete !== null ? (
-                    <>
-                      <p className="text-xs text-gray-500 mb-3">
-                        {txCountForDelete} transaction{txCountForDelete !== 1 ? 's' : ''} use this
-                        category. Choose what happens to them:
-                      </p>
-                      <div className="space-y-1 mb-3">
-                        <label className="block text-sm font-medium text-gray-700">
-                          Reassign transactions to
-                        </label>
-                        <select
-                          value={deleteReassignTo}
-                          onChange={(e) => setDeleteReassignTo(e.target.value)}
-                          className="block w-full h-[38px] rounded-lg border border-gray-300 px-3 text-sm"
-                        >
-                          <option value="">Uncategorized</option>
-                          {allFlat
-                            .filter((c) => c.id !== deletingCat.id)
-                            .map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.parentId ? `  ↳ ${c.name}` : c.name}
-                              </option>
-                            ))}
-                        </select>
-                      </div>
-                    </>
-                  ) : (
-                    <p className="text-xs text-gray-500 mb-3">
-                      This will permanently delete the category.
-                    </p>
-                  )}
-                  {deleteError && <p className="text-xs text-red-600 mb-2">{deleteError}</p>}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => confirmDeleteMutation.mutate()}
-                      disabled={confirmDeleteMutation.isPending}
-                      className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
-                    >
-                      {txCountForDelete !== null ? 'Delete & reassign' : 'Delete'}
-                    </button>
-                    <button
-                      onClick={() => { setDeletingCat(null); setTxCountForDelete(null); setDeleteError(''); }}
-                      className="px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg hover:bg-gray-50"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </Card>
-              )}
             </div>
 
           </div>
@@ -475,6 +434,50 @@ export function CategoriesPage() {
         </div>
 
       </div>
+      {/* Delete confirmation modal — fixed in viewport so scrolling doesn't matter */}
+      {deletingCat && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={closeDeletePanel}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-sm font-semibold text-gray-900 mb-1">
+              Delete &ldquo;{deletingCat.name}&rdquo;?
+            </p>
+
+            {deleteIsBlocked ? (
+              <p className="text-xs text-red-600 mt-2 mb-4">{deleteError}</p>
+            ) : (
+              <p className="text-xs text-gray-500 mt-2 mb-4">
+                This will permanently delete the category.
+                {deleteMutation.isPending && ' Checking for transactions…'}
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              {!deleteIsBlocked && (
+                <button
+                  onClick={() => deleteMutation.mutate()}
+                  disabled={deleteMutation.isPending}
+                  className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                >
+                  {deleteMutation.isPending ? 'Checking…' : 'Delete'}
+                </button>
+              )}
+              <button
+                onClick={closeDeletePanel}
+                className="px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                {deleteIsBlocked ? 'Close' : 'Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </NavShell>
   );
 }

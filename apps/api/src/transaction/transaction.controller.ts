@@ -1,10 +1,10 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { z } from 'zod';
 import { ok } from '../common/response';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { TransactionService } from './transaction.service';
-import { RecategorizeTxBodySchema } from '@pfm/contracts';
+import { RecategorizeTxBodySchema, PutSplitsBodySchema } from '@pfm/contracts';
 import type { AccessTokenPayload } from '@pfm/contracts';
 
 @Controller('households/:householdId/transactions')
@@ -47,6 +47,15 @@ export class TransactionController {
     return ok(await this.txs.applyRulesToAll(householdId, user.sub));
   }
 
+  @Get(':txId')
+  async getOne(
+    @Param('householdId') householdId: string,
+    @Param('txId') txId: string,
+    @CurrentUser() user: AccessTokenPayload,
+  ) {
+    return ok(await this.txs.getTransaction(txId, householdId, user.sub));
+  }
+
   @Patch(':txId/category')
   @HttpCode(200)
   async recategorize(
@@ -56,5 +65,26 @@ export class TransactionController {
     @Body(new ZodValidationPipe(RecategorizeTxBodySchema)) body: z.infer<typeof RecategorizeTxBodySchema>,
   ) {
     return ok(await this.txs.recategorize(txId, householdId, user.sub, body));
+  }
+
+  @Patch(':txId/splits')
+  @HttpCode(200)
+  async setSplits(
+    @Param('householdId') householdId: string,
+    @Param('txId') txId: string,
+    @CurrentUser() user: AccessTokenPayload,
+    @Body(new ZodValidationPipe(PutSplitsBodySchema)) body: z.infer<typeof PutSplitsBodySchema>,
+  ) {
+    return ok(await this.txs.setSplits(txId, householdId, user.sub, body));
+  }
+
+  @Delete(':txId/splits')
+  @HttpCode(200)
+  async clearSplits(
+    @Param('householdId') householdId: string,
+    @Param('txId') txId: string,
+    @CurrentUser() user: AccessTokenPayload,
+  ) {
+    return ok(await this.txs.clearSplits(txId, householdId, user.sub));
   }
 }

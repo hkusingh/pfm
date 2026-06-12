@@ -5,7 +5,11 @@ import { z } from 'zod';
 export const CsvColumnMappingSchema = z.object({
   dateCol: z.string(),
   merchantCol: z.string(),
-  amountCol: z.string(),
+  // Single-column mode: one column contains signed amounts
+  amountCol: z.string().optional(),
+  // Split-column mode: separate debit (outflow) and credit (inflow) columns
+  debitCol: z.string().optional(),
+  creditCol: z.string().optional(),
   invertAmount: z.boolean().optional(),
 });
 

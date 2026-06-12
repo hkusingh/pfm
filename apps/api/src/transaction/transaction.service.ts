@@ -1,9 +1,47 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { prisma } from '@pfm/db';
 import { buildScope, canViewLineItems } from '@pfm/core';
-import { merchantRuleKey } from '@pfm/core';
-import type { TransactionListItem, TransactionListResponse, RecategorizeTxBody, ApplyRulesResponse } from '@pfm/contracts';
+import { merchantRuleKey, merchantSimilarityScore, MERCHANT_MATCH_THRESHOLD } from '@pfm/core';
+import type { TransactionListItem, TransactionListResponse, RecategorizeTxBody, ApplyRulesResponse, PutSplitsBody } from '@pfm/contracts';
 import { TRANSFER_PATTERNS } from '../category/category.service';
+
+// Shared shape returned by all Prisma queries that include account/category/splits
+type TxWithIncludes = {
+  id: string; accountId: string; postedDate: Date; merchant: string | null;
+  amountMinor: number; currency: string; categoryId: string | null;
+  hasSplit: boolean; dedupHash: string; createdAt: Date;
+  account: { name: string };
+  category: { name: string; color: string | null } | null;
+  splits: Array<{
+    id: string; categoryId: string | null; amountMinor: number;
+    category: { name: string; color: string | null } | null;
+  }>;
+};
+
+function txToListItem(t: TxWithIncludes): TransactionListItem {
+  return {
+    id: t.id,
+    accountId: t.accountId,
+    accountName: t.account.name,
+    postedDate: t.postedDate.toISOString().slice(0, 10),
+    merchant: t.merchant,
+    amountMinor: t.amountMinor,
+    currency: t.currency,
+    categoryId: t.categoryId,
+    categoryName: t.category?.name ?? null,
+    categoryColor: t.category?.color ?? null,
+    hasSplit: t.hasSplit,
+    splits: t.splits.map((s) => ({
+      id: s.id,
+      categoryId: s.categoryId,
+      categoryName: s.category?.name ?? null,
+      categoryColor: s.category?.color ?? null,
+      amountMinor: s.amountMinor,
+    })),
+    dedupHash: t.dedupHash,
+    createdAt: t.createdAt.toISOString(),
+  };
+}
 
 export interface ListTransactionsQuery {
   search?: string;
@@ -58,11 +96,18 @@ export class TransactionService {
       where.merchant = { contains: query.search, mode: 'insensitive' };
     }
     if (query.categoryId !== undefined) {
-      where.categoryId = query.categoryId === 'uncategorized' ? null : query.categoryId;
+      if (query.categoryId === 'uncategorized') {
+        where.categoryId = null;
+        where.hasSplit = false;
+      } else {
+        where.categoryId = query.categoryId;
+      }
     } else if (query.hasCategory === true) {
-      where.categoryId = { not: null };
+      // A split transaction counts as categorized even though categoryId is null
+      where.OR = [{ categoryId: { not: null } }, { hasSplit: true }];
     } else if (query.hasCategory === false) {
       where.categoryId = null;
+      where.hasSplit = false;
     }
     if (query.from || query.to) {
       where.postedDate = {
@@ -81,24 +126,12 @@ export class TransactionService {
         include: {
           account: { select: { name: true } },
           category: { select: { name: true, color: true } },
+          splits: { include: { category: { select: { name: true, color: true } } } },
         },
       }),
     ]);
 
-    const items: TransactionListItem[] = rows.map((t) => ({
-      id: t.id,
-      accountId: t.accountId,
-      accountName: t.account.name,
-      postedDate: t.postedDate.toISOString().slice(0, 10),
-      merchant: t.merchant,
-      amountMinor: t.amountMinor,
-      currency: t.currency,
-      categoryId: t.categoryId,
-      categoryName: t.category?.name ?? null,
-      categoryColor: t.category?.color ?? null,
-      dedupHash: t.dedupHash,
-      createdAt: t.createdAt.toISOString(),
-    }));
+    const items: TransactionListItem[] = rows.map(txToListItem);
 
     return { items, total, page, limit };
   }
@@ -118,7 +151,7 @@ export class TransactionService {
     // Fetch everything needed in parallel — no per-transaction queries
     const [uncategorized, rules, transferCat, categorizedTxs] = await Promise.all([
       prisma.transaction.findMany({
-        where: { accountId: { in: visibleAccountIds }, categoryId: null },
+        where: { accountId: { in: visibleAccountIds }, categoryId: null, hasSplit: false },
         select: { id: true, merchant: true },
       }),
       prisma.categoryRule.findMany({ where: { householdId } }),
@@ -156,22 +189,29 @@ export class TransactionService {
     }
 
     // In-memory resolution: explicit rules → learned → transfer patterns
+    // Each stage uses multi-signal similarity scoring; returns the best match above threshold.
     const resolve = (merchantRaw: string | null): string | null => {
       if (!merchantRaw) return null;
       const ruleKey = merchantRuleKey(merchantRaw);
       if (!ruleKey) return null;
 
-      // 1. Explicit category rules — match by key containment (handles both old full-normalized
-      //    rules already in DB and new key-based rules going forward)
+      // 1. Explicit category rules — best-scoring match above threshold
+      let bestScore = 0;
+      let bestCatId: string | null = null;
       for (const rule of rules) {
-        if (ruleKey.includes(rule.merchantMatch) || rule.merchantMatch.includes(ruleKey)) {
-          return rule.categoryId;
-        }
+        const s = merchantSimilarityScore(ruleKey, rule.merchantMatch);
+        if (s > bestScore) { bestScore = s; bestCatId = rule.categoryId; }
       }
+      if (bestScore >= MERCHANT_MATCH_THRESHOLD && bestCatId) return bestCatId;
 
-      // 2. Learned from previous manual categorizations — exact key match
-      const learned = learnedMap.get(ruleKey);
-      if (learned) return learned;
+      // 2. Learned from previous manual categorizations — best-scoring match above threshold
+      bestScore = 0;
+      bestCatId = null;
+      for (const [knownKey, catId] of learnedMap) {
+        const s = merchantSimilarityScore(ruleKey, knownKey);
+        if (s > bestScore) { bestScore = s; bestCatId = catId; }
+      }
+      if (bestScore >= MERCHANT_MATCH_THRESHOLD && bestCatId) return bestCatId;
 
       // 3. Transfer pattern auto-detection
       if (transferCat && TRANSFER_PATTERNS.some((p) => p.test(ruleKey))) {
@@ -233,13 +273,19 @@ export class TransactionService {
       throw new NotFoundException('Transaction not found');
     }
 
+    // Assigning a single category clears any existing split
+    if (tx.hasSplit) {
+      await prisma.transactionSplit.deleteMany({ where: { transactionId: txId } });
+    }
+
     // Update category
     const updated = await prisma.transaction.update({
       where: { id: txId },
-      data: { categoryId: body.categoryId },
+      data: { categoryId: body.categoryId, hasSplit: false },
       include: {
         account: { select: { name: true } },
         category: { select: { name: true, color: true } },
+        splits: { include: { category: { select: { name: true, color: true } } } },
       },
     });
 
@@ -268,19 +314,79 @@ export class TransactionService {
       }
     }
 
-    return {
-      id: updated.id,
-      accountId: updated.accountId,
-      accountName: updated.account.name,
-      postedDate: updated.postedDate.toISOString().slice(0, 10),
-      merchant: updated.merchant,
-      amountMinor: updated.amountMinor,
-      currency: updated.currency,
-      categoryId: updated.categoryId,
-      categoryName: updated.category?.name ?? null,
-      categoryColor: updated.category?.color ?? null,
-      dedupHash: updated.dedupHash,
-      createdAt: updated.createdAt.toISOString(),
-    };
+    return txToListItem(updated);
+  }
+
+  // ── E5.3 — Get single transaction (for split page) ───────────────────────
+
+  async getTransaction(txId: string, householdId: string, viewerUserId: string): Promise<TransactionListItem> {
+    const tx = await this.findVerifiedTx(txId, householdId, viewerUserId);
+    return txToListItem(tx);
+  }
+
+  // ── E5.4 — Split transaction across categories ───────────────────────────
+
+  async setSplits(txId: string, householdId: string, viewerUserId: string, body: PutSplitsBody): Promise<TransactionListItem> {
+    const tx = await this.findVerifiedTx(txId, householdId, viewerUserId);
+
+    const totalMagnitude = Math.abs(tx.amountMinor);
+    const splitSum = body.splits.reduce((sum: number, s: { categoryId: string | null; amountMinor: number }) => sum + s.amountMinor, 0);
+    if (splitSum !== totalMagnitude) {
+      throw new BadRequestException(
+        `Split amounts total ${splitSum} but transaction is ${totalMagnitude}. They must match exactly.`,
+      );
+    }
+
+    // All splits carry the same sign as the parent transaction
+    const sign = tx.amountMinor >= 0 ? 1 : -1;
+
+    await prisma.$transaction([
+      prisma.transactionSplit.deleteMany({ where: { transactionId: txId } }),
+      prisma.transactionSplit.createMany({
+        data: body.splits.map((s: { categoryId: string | null; amountMinor: number }) => ({
+          transactionId: txId,
+          categoryId: s.categoryId,
+          amountMinor: sign * s.amountMinor,
+        })),
+      }),
+      prisma.transaction.update({
+        where: { id: txId },
+        data: { hasSplit: true, categoryId: null },
+      }),
+    ]);
+
+    return this.getTransaction(txId, householdId, viewerUserId);
+  }
+
+  async clearSplits(txId: string, householdId: string, viewerUserId: string): Promise<TransactionListItem> {
+    await this.findVerifiedTx(txId, householdId, viewerUserId);
+    await prisma.$transaction([
+      prisma.transactionSplit.deleteMany({ where: { transactionId: txId } }),
+      prisma.transaction.update({ where: { id: txId }, data: { hasSplit: false } }),
+    ]);
+    return this.getTransaction(txId, householdId, viewerUserId);
+  }
+
+  // ── Shared helpers ───────────────────────────────────────────────────────
+
+  private async findVerifiedTx(txId: string, householdId: string, viewerUserId: string) {
+    const tx = await prisma.transaction.findUnique({
+      where: { id: txId },
+      include: {
+        account: { select: { id: true, name: true, householdId: true, ownerUserId: true, visibility: true } },
+        category: { select: { name: true, color: true } },
+        splits: { include: { category: { select: { name: true, color: true } } } },
+      },
+    });
+    if (!tx || tx.account.householdId !== householdId) throw new NotFoundException('Transaction not found');
+
+    const allAccounts = await prisma.account.findMany({
+      where: { householdId },
+      select: { id: true, ownerUserId: true, visibility: true },
+    });
+    const scope = buildScope(viewerUserId, householdId, 'household', allAccounts);
+    if (!canViewLineItems(scope, tx.accountId)) throw new NotFoundException('Transaction not found');
+
+    return tx;
   }
 }

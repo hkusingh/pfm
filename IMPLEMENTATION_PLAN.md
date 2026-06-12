@@ -353,6 +353,10 @@ concrete work and the acceptance bar. Sizes (S/M/L) carry over from the epic doc
   never orphan; parent-with-children prompts child handling first.
 - **E4.6 Recategorize & rules** *(M, C-6)* — change a transaction's category; optional merchant rule
   auto-applied going forward (shared logic with E5.2).
+- **E4.7 Safe deletion UX — reclassify page** *(S, C-5)* — when deleting a category that has
+  transactions, navigate to `/categories/:id/reclassify`; full transaction list with checkbox
+  bulk-reassign and expandable CategoryPicker; "Delete category" unlocks at 0 transactions.
+  No new API endpoints (reuses existing transaction list + PATCH category endpoints).
 
 ### Epic 3 — Document Upload & Import  *(Wave 3 — high priority, the Phase 1 data path)*  — depends on E2
 
@@ -400,6 +404,9 @@ concrete work and the acceptance bar. Sizes (S/M/L) carry over from the epic doc
   3M/6M toggle); income vs expenses; budget vs actual; interactive (hover amounts); visibility-aware;
   show **actuals**. **Currency-aware:** roll-ups are base-currency only; non-base-currency accounts
   appear in a separate per-currency breakdown, never blended (§2.1).
+  Sub-task **E7.2b**: pie slice click navigates to `TransactionsPage?categoryId=…&from=…&to=…`;
+  TransactionsPage reads URL params as initial filter values; "← Back to Dashboard" breadcrumb.
+  Build E7.2b in the same story as the chart.
 - **E7.3 Reserve-funded marking on spending-over-time** *(S, B-6)* — in the Actual view, the
   reserve-funded portion of a month is a distinct labeled segment so the spike is self-explaining.
 - **E7.4 Period comparison report** *(M, D-5)* — compare spending **by category** across two periods,

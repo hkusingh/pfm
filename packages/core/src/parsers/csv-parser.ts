@@ -6,7 +6,13 @@ export type CsvPreview = {
   sampleRows: Record<string, string>[];
   rowCount: number;
   fingerprint: string;
-  suggestedMapping: { dateCol: string; merchantCol: string; amountCol: string } | null;
+  suggestedMapping: {
+    dateCol: string;
+    merchantCol: string;
+    amountCol?: string;
+    debitCol?: string;
+    creditCol?: string;
+  } | null;
 };
 
 // Parse a single CSV line respecting quoted fields and embedded commas.
@@ -54,11 +60,26 @@ function guessMapping(columns: string[]): CsvPreview['suggestedMapping'] {
   const merchantIdx = lower.findIndex((c) =>
     /desc|description|merchant|name|memo|payee|narration/.test(c),
   );
+
+  if (dateIdx === -1) return null;
+
+  // Detect split debit/credit column format (e.g. Citi, Bank of America CSVs)
+  const debitIdx = lower.findIndex((c) => /^debit$|^debit.?amount$|^withdrawal$|^withdrawals$/.test(c));
+  const creditIdx = lower.findIndex((c) => /^credit$|^credit.?amount$|^deposit$|^deposits$/.test(c));
+
+  const merchantCol =
+    merchantIdx !== -1
+      ? columns[merchantIdx]
+      : (columns.find((_, i) => i !== dateIdx && i !== debitIdx && i !== creditIdx) ?? '');
+
+  if (debitIdx !== -1 && creditIdx !== -1) {
+    return { dateCol: columns[dateIdx], merchantCol, debitCol: columns[debitIdx], creditCol: columns[creditIdx] };
+  }
+
   const amountIdx = lower.findIndex((c) =>
     /^amount$|^amt$|transaction.?amount|^debit$|^credit$|charge/.test(c),
   );
-
-  if (dateIdx === -1 || amountIdx === -1) return null;
+  if (amountIdx === -1) return null;
   return {
     dateCol: columns[dateIdx],
     merchantCol: merchantIdx !== -1 ? columns[merchantIdx] : columns.find((_, i) => i !== dateIdx && i !== amountIdx) ?? '',
@@ -133,23 +154,48 @@ function parseDate(raw: string): string {
 
 export function applyCsvMapping(
   buffer: Buffer,
-  mapping: { dateCol: string; merchantCol: string; amountCol: string; invertAmount?: boolean },
+  mapping: {
+    dateCol: string;
+    merchantCol: string;
+    amountCol?: string;
+    debitCol?: string;
+    creditCol?: string;
+    invertAmount?: boolean;
+  },
 ): ParsedRow[] {
   const text = buffer.toString('utf-8');
   const lines = splitLines(text);
   if (lines.length < 2) return [];
   const headers = parseCsvLine(lines[0]);
 
+  const useSplit = !!(mapping.debitCol || mapping.creditCol);
+
   return lines.slice(1).reduce<ParsedRow[]>((acc, line) => {
     const vals = parseCsvLine(line);
     const get = (col: string) => vals[headers.indexOf(col)] ?? '';
 
     const rawDate = get(mapping.dateCol);
-    const rawAmount = get(mapping.amountCol);
-    if (!rawDate || !rawAmount) return acc;
+    if (!rawDate) return acc;
+
+    let amountMinor: number;
+    if (useSplit) {
+      const rawDebit = mapping.debitCol ? get(mapping.debitCol) : '';
+      const rawCredit = mapping.creditCol ? get(mapping.creditCol) : '';
+      if (!rawDebit && !rawCredit) return acc;
+      // abs() so banks that prefix either column with a leading minus don't flip the sign
+      // (some exports write Credits as negative even though they reduce the balance)
+      const debitMinor = rawDebit ? Math.abs(parseAmount(rawDebit, false)) : 0;
+      const creditMinor = rawCredit ? Math.abs(parseAmount(rawCredit, false)) : 0;
+      // debits = outflows (negative), credits = inflows (positive)
+      amountMinor = creditMinor - debitMinor;
+      if (mapping.invertAmount) amountMinor = -amountMinor;
+    } else {
+      const rawAmount = mapping.amountCol ? get(mapping.amountCol) : '';
+      if (!rawAmount) return acc;
+      amountMinor = parseAmount(rawAmount, mapping.invertAmount ?? false);
+    }
 
     const date = parseDate(rawDate);
-    const amountMinor = parseAmount(rawAmount, mapping.invertAmount ?? false);
     const merchant = mapping.merchantCol ? (get(mapping.merchantCol) || null) : null;
 
     acc.push({ date, merchant, amountMinor });

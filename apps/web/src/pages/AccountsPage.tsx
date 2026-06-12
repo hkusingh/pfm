@@ -30,7 +30,7 @@ type ImportPreview = {
   sampleRows: Record<string, string>[] | null;
   rowCount: number;
   fingerprint: string;
-  suggestedMapping: { dateCol: string; merchantCol: string; amountCol: string } | null;
+  suggestedMapping: { dateCol: string; merchantCol: string; amountCol?: string; debitCol?: string; creditCol?: string } | null;
   autoMapped: boolean;
 };
 type ImportResult = { imported: number; skipped: number; errors: number };
@@ -213,6 +213,9 @@ export function AccountsPage() {
   const [importMerchantCol, setImportMerchantCol] = useState('');
   const [importAmountCol, setImportAmountCol] = useState('');
   const [importInvert, setImportInvert] = useState(false);
+  const [importSplitCols, setImportSplitCols] = useState(false);
+  const [importDebitCol, setImportDebitCol] = useState('');
+  const [importCreditCol, setImportCreditCol] = useState('');
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importError, setImportError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -238,9 +241,17 @@ export function AccountsPage() {
 
       setImportPreview(preview);
       // Pre-fill mapping from suggestion
-      setImportDateCol(preview.suggestedMapping?.dateCol ?? preview.columns?.[0] ?? '');
-      setImportMerchantCol(preview.suggestedMapping?.merchantCol ?? preview.columns?.[1] ?? '');
-      setImportAmountCol(preview.suggestedMapping?.amountCol ?? preview.columns?.[2] ?? '');
+      const sm = preview.suggestedMapping;
+      setImportDateCol(sm?.dateCol ?? preview.columns?.[0] ?? '');
+      setImportMerchantCol(sm?.merchantCol ?? preview.columns?.[1] ?? '');
+      if (sm?.debitCol || sm?.creditCol) {
+        setImportSplitCols(true);
+        setImportDebitCol(sm?.debitCol ?? '');
+        setImportCreditCol(sm?.creditCol ?? '');
+      } else {
+        setImportSplitCols(false);
+        setImportAmountCol(sm?.amountCol ?? preview.columns?.[2] ?? '');
+      }
       setImportAccountId(accounts?.own?.[0]?.id ?? '');
       setImportStep('mapping');
     } catch (err) {
@@ -263,12 +274,21 @@ export function AccountsPage() {
         accountId: importAccountId,
       };
       if (!importPreview.autoMapped) {
-        body.mapping = {
-          dateCol: importDateCol,
-          merchantCol: importMerchantCol,
-          amountCol: importAmountCol,
-          invertAmount: importInvert,
-        };
+        if (importSplitCols) {
+          body.mapping = {
+            dateCol: importDateCol,
+            merchantCol: importMerchantCol,
+            debitCol: importDebitCol,
+            creditCol: importCreditCol,
+          };
+        } else {
+          body.mapping = {
+            dateCol: importDateCol,
+            merchantCol: importMerchantCol,
+            amountCol: importAmountCol,
+            invertAmount: importInvert,
+          };
+        }
       }
       const result = await api.post<ImportResult>(
         `/households/${household.id}/import/commit`,
@@ -290,6 +310,9 @@ export function AccountsPage() {
     setImportResult(null);
     setImportError('');
     setImportFileName('');
+    setImportSplitCols(false);
+    setImportDebitCol('');
+    setImportCreditCol('');
   }
 
   // ─── Account changes ─────────────────────────────────────────────────────────
@@ -476,57 +499,105 @@ export function AccountsPage() {
             <div className="px-5 py-4 space-y-4">
               {/* CSV column mapping table */}
               {!importPreview.autoMapped && columns.length > 0 && (
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className="text-left text-xs font-medium text-gray-500 border-b border-gray-200">
-                      <th className="pb-2 pr-4">Your file column</th>
-                      <th className="pb-2 pr-4">Maps to</th>
-                      <th className="pb-2">Sample</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    <tr>
-                      <td className="py-2 pr-4">
-                        <select
-                          value={importDateCol}
-                          onChange={(e) => setImportDateCol(e.target.value)}
-                          className="text-xs border border-gray-200 rounded-md px-2 py-1 bg-white w-full"
-                        >
-                          {columns.map((c) => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                      </td>
-                      <td className="py-2 pr-4 text-gray-700 font-medium">Date ✓</td>
-                      <td className="py-2 text-gray-400 text-xs">{getSampleValue(importDateCol)}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 pr-4">
-                        <select
-                          value={importMerchantCol}
-                          onChange={(e) => setImportMerchantCol(e.target.value)}
-                          className="text-xs border border-gray-200 rounded-md px-2 py-1 bg-white w-full"
-                        >
-                          <option value="">(none)</option>
-                          {columns.map((c) => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                      </td>
-                      <td className="py-2 pr-4 text-gray-700 font-medium">Merchant ✓</td>
-                      <td className="py-2 text-gray-400 text-xs">{getSampleValue(importMerchantCol)}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 pr-4">
-                        <select
-                          value={importAmountCol}
-                          onChange={(e) => setImportAmountCol(e.target.value)}
-                          className="text-xs border border-gray-200 rounded-md px-2 py-1 bg-white w-full"
-                        >
-                          {columns.map((c) => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                      </td>
-                      <td className="py-2 pr-4 text-gray-700 font-medium">Amount ✓</td>
-                      <td className="py-2 text-gray-400 text-xs">{getSampleValue(importAmountCol)}</td>
-                    </tr>
-                  </tbody>
-                </table>
+                <div className="space-y-3">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="text-left text-xs font-medium text-gray-500 border-b border-gray-200">
+                        <th className="pb-2 pr-4">Your file column</th>
+                        <th className="pb-2 pr-4">Maps to</th>
+                        <th className="pb-2">Sample</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      <tr>
+                        <td className="py-2 pr-4">
+                          <select
+                            value={importDateCol}
+                            onChange={(e) => setImportDateCol(e.target.value)}
+                            className="text-xs border border-gray-200 rounded-md px-2 py-1 bg-white w-full"
+                          >
+                            {columns.map((c) => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </td>
+                        <td className="py-2 pr-4 text-gray-700 font-medium">Date ✓</td>
+                        <td className="py-2 text-gray-400 text-xs">{getSampleValue(importDateCol)}</td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 pr-4">
+                          <select
+                            value={importMerchantCol}
+                            onChange={(e) => setImportMerchantCol(e.target.value)}
+                            className="text-xs border border-gray-200 rounded-md px-2 py-1 bg-white w-full"
+                          >
+                            <option value="">(none)</option>
+                            {columns.map((c) => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </td>
+                        <td className="py-2 pr-4 text-gray-700 font-medium">Merchant ✓</td>
+                        <td className="py-2 text-gray-400 text-xs">{getSampleValue(importMerchantCol)}</td>
+                      </tr>
+                      {importSplitCols ? (
+                        <>
+                          <tr>
+                            <td className="py-2 pr-4">
+                              <select
+                                value={importDebitCol}
+                                onChange={(e) => setImportDebitCol(e.target.value)}
+                                className="text-xs border border-gray-200 rounded-md px-2 py-1 bg-white w-full"
+                              >
+                                <option value="">(none)</option>
+                                {columns.map((c) => <option key={c} value={c}>{c}</option>)}
+                              </select>
+                            </td>
+                            <td className="py-2 pr-4 text-gray-700 font-medium">Debit (outflow) ✓</td>
+                            <td className="py-2 text-gray-400 text-xs">{getSampleValue(importDebitCol)}</td>
+                          </tr>
+                          <tr>
+                            <td className="py-2 pr-4">
+                              <select
+                                value={importCreditCol}
+                                onChange={(e) => setImportCreditCol(e.target.value)}
+                                className="text-xs border border-gray-200 rounded-md px-2 py-1 bg-white w-full"
+                              >
+                                <option value="">(none)</option>
+                                {columns.map((c) => <option key={c} value={c}>{c}</option>)}
+                              </select>
+                            </td>
+                            <td className="py-2 pr-4 text-gray-700 font-medium">Credit (inflow) ✓</td>
+                            <td className="py-2 text-gray-400 text-xs">{getSampleValue(importCreditCol)}</td>
+                          </tr>
+                        </>
+                      ) : (
+                        <tr>
+                          <td className="py-2 pr-4">
+                            <select
+                              value={importAmountCol}
+                              onChange={(e) => setImportAmountCol(e.target.value)}
+                              className="text-xs border border-gray-200 rounded-md px-2 py-1 bg-white w-full"
+                            >
+                              {columns.map((c) => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </td>
+                          <td className="py-2 pr-4 text-gray-700 font-medium">Amount ✓</td>
+                          <td className="py-2 text-gray-400 text-xs">{getSampleValue(importAmountCol)}</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                  <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={importSplitCols}
+                      onChange={(e) => {
+                        setImportSplitCols(e.target.checked);
+                        if (e.target.checked && !importDebitCol) setImportDebitCol(columns[2] ?? '');
+                        if (e.target.checked && !importCreditCol) setImportCreditCol(columns[3] ?? '');
+                      }}
+                      className="rounded border-gray-300"
+                    />
+                    This file uses separate Debit and Credit columns
+                  </label>
+                </div>
               )}
 
               {importPreview.autoMapped && importPreview.format !== 'pdf' && (
@@ -595,7 +666,7 @@ export function AccountsPage() {
                     ))}
                   </select>
                 </div>
-                {!importPreview.autoMapped && (
+                {!importPreview.autoMapped && !importSplitCols && (
                   <div className="flex items-end pb-2">
                     <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                       <input

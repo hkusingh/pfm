@@ -6,3 +6,4 @@ export * from './components/Table';
 export * from './components/Badge';
 export * from './components/NavShell';
 export * from './components/Charts';
+export * from './components/CategoryPicker';

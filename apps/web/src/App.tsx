@@ -12,6 +12,8 @@ import { CreateHouseholdPage } from './pages/CreateHouseholdPage';
 import { HouseholdSettingsPage } from './pages/HouseholdSettingsPage';
 import { AccountsPage } from './pages/AccountsPage';
 import { CategoriesPage } from './pages/CategoriesPage';
+import { ReclassifyPage } from './pages/ReclassifyPage';
+import { SplitTransactionPage } from './pages/SplitTransactionPage';
 import { TransactionsPage } from './pages/TransactionsPage';
 import { InviteAcceptPage } from './pages/InviteAcceptPage';
 import { AdminLayout } from './components/AdminLayout';
@@ -57,6 +59,8 @@ export function App() {
             <Route path="/accounts" element={<AccountsPage />} />
             <Route path="/transactions" element={<TransactionsPage />} />
             <Route path="/categories" element={<CategoriesPage />} />
+            <Route path="/categories/:categoryId/reclassify" element={<ReclassifyPage />} />
+            <Route path="/transactions/:txId/split" element={<SplitTransactionPage />} />
             <Route path="/settings/household" element={<HouseholdSettingsPage />} />
             {/* Admin section — AdminLayout enforces isSiteAdmin */}
             <Route path="/admin" element={<AdminLayout />}>
