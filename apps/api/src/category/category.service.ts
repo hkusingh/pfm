@@ -98,14 +98,61 @@ export class CategoryService {
     if (count === 0) {
       await this.seedDefaults(householdId);
     } else {
-      // Ensure Transfer system category exists — added after initial households were created
-      const hasTransfer = await prisma.category.findFirst({
-        where: { householdId, kind: 'transfer', isSystem: true },
-      });
-      if (!hasTransfer) {
-        await prisma.category.create({
-          data: { householdId, name: 'Transfer', color: '#718096', kind: 'transfer', isSystem: true, sortOrder: -1 },
-        });
+      // Backfill any top-level categories that were added to DEFAULT_CATEGORIES after this
+      // household was first seeded. Checks by name so re-runs are safe.
+      const existingNames = new Set(
+        (await prisma.category.findMany({ where: { householdId, parentId: null }, select: { name: true } }))
+          .map((c) => c.name),
+      );
+      for (const cat of DEFAULT_CATEGORIES) {
+        if (!existingNames.has(cat.name)) {
+          // New top-level category — create parent + all children
+          const parent = await prisma.category.create({
+            data: {
+              householdId,
+              name: cat.name,
+              color: cat.color,
+              kind: cat.kind,
+              isSystem: cat.isSystem,
+              sortOrder: cat.sortOrder,
+            },
+          });
+          for (const child of cat.children) {
+            await prisma.category.create({
+              data: {
+                householdId,
+                parentId: parent.id,
+                name: child.name,
+                kind: cat.kind,
+                isSystem: false,
+                sortOrder: child.sortOrder,
+              },
+            });
+          }
+        } else if (cat.children.length > 0) {
+          // Category exists — backfill any missing children (e.g. Income gaining subcategories)
+          const parent = await prisma.category.findFirst({
+            where: { householdId, name: cat.name, parentId: null },
+            include: { children: { select: { name: true } } },
+          });
+          if (parent) {
+            const existingChildNames = new Set((parent as typeof parent & { children: { name: string }[] }).children.map((c) => c.name));
+            for (const child of cat.children) {
+              if (!existingChildNames.has(child.name)) {
+                await prisma.category.create({
+                  data: {
+                    householdId,
+                    parentId: parent.id,
+                    name: child.name,
+                    kind: cat.kind,
+                    isSystem: false,
+                    sortOrder: child.sortOrder,
+                  },
+                });
+              }
+            }
+          }
+        }
       }
     }
 
