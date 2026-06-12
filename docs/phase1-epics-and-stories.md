@@ -17,14 +17,14 @@ Phase 1 is split into one **foundation epic** (the shared kernel everyone builds
 
 ```mermaid
 flowchart TD
-  E0[Epic 0 — Foundation / Shared Kernel]:::k
-  E1[Epic 1 — Household & Membership]:::a
-  E2[Epic 2 — Accounts & Manual Entry]:::a
-  E4[Epic 4 — Categories]:::a
-  E3[Epic 3 — Document Upload & Import]:::b
-  E5[Epic 5 — Transactions]:::b
-  E6[Epic 6 — Budgets & Sinking Funds]:::b
-  E7[Epic 7 — Dashboard & Reports]:::c
+  E0[Epic 0 — Foundation ✅]:::k
+  E1[Epic 1 — Household ✅]:::done
+  E2[Epic 2 — Accounts ✅]:::done
+  E4[Epic 4 — Categories ✅]:::done
+  E3[Epic 3 — Import ✅]:::done
+  E5[Epic 5 — Transactions ✅]:::done
+  E6[Epic 6 — Budgets & Sinking Funds ✅]:::done
+  E7[Epic 7 — Dashboard ✅]:::done
 
   E0 --> E1
   E0 --> E2
@@ -36,7 +36,7 @@ flowchart TD
   E5 --> E7
   E6 --> E7
   classDef k fill:#1F4E79,color:#fff,stroke:#1F4E79;
-  classDef a fill:#eaf1f8,stroke:#2E6DA4,color:#1c2530;
+  classDef done fill:#d1fae5,stroke:#059669,color:#064e3b;
   classDef b fill:#fbf1df,stroke:#B9770E,color:#1c2530;
   classDef c fill:#e6f5ec,stroke:#1F8A4C,color:#14532d;
 ```
@@ -46,9 +46,10 @@ flowchart TD
 | Wave | Epics (parallel) | Notes |
 |---|---|---|
 | **Wave 1** | Epic 0 ✅ *(done)* | Foundation — everyone depends on it; land first. |
-| **Wave 2** | Epic 1, Epic 2, Epic 4, **Epic 8** | Independent feature areas on the kernel. **Epic 8 (invitation-only access) gates signup — start early.** |
-| **Wave 3** | Epic 3, Epic 5, Epic 6, **Epic 9** | Build on accounts/categories; stub where needed. **Epic 3 (document upload) is the Phase 1 data path** — treat as high priority. |
-| **Wave 4** | Epic 7 | Integrates transactions + budgets; lands last. |
+| **Wave 2** | Epic 1 ✅, Epic 2 ✅, Epic 4 ✅, **Epic 8** ✅ | All merged to `main`. |
+| **Wave 3** | Epic 3 ✅, Epic 5 ✅, Epic 6 ✅, **Epic 9** *(pending)* | E3, E5, E6 merged to `main`; E9 not yet started. |
+| **Wave 4** | Epic 7 ✅ *(done)* | Integrates transactions + budgets; lands last. |
+| **Wave 5** | **Epic 10 (Dashboard & Transaction UX Polish)** | Wireframe alignment, user profile/settings, nav badge, transaction exclusion. |
 
 > **Phase 1 scope note:** Phase 1 is a **limited-user test release** and is **invitation-only** (Epic 8). Data enters via **document/statement upload (Epic 3) and manual entry (Epic 2) only**. **Plaid live aggregation is deferred to Phase 2** — its stories are listed under Epic 2 as Phase 2 for forward planning, not Phase 1 work. A thin **BYOK AI categorization** slice (Epic 9) is included in Phase 1: households may supply their own LLM provider key; AI is always optional. The broader AI insights platform remains Phase 2.
 
@@ -95,7 +96,7 @@ flowchart TD
 
 ---
 
-## 3. Epic 1 — Household & Membership
+## 3. Epic 1 — Household & Membership  ✅
 
 **Goal:** households can be created and shared with configurable roles. **Depends on:** E0. **Parallel with:** Epics 2, 4.
 
@@ -114,7 +115,7 @@ flowchart TD
 
 ---
 
-## 4. Epic 2 — Accounts & Manual Entry
+## 4. Epic 2 — Accounts & Manual Entry  ✅
 
 **Goal:** account model, manual accounts, and per-account visibility. **Depends on:** E0. **Parallel with:** Epics 1, 4.
 **Phase 1 scope.** Plaid live aggregation is **Phase 2** (stories listed at the end for forward planning).
@@ -137,7 +138,7 @@ flowchart TD
 
 ---
 
-## 5. Epic 3 — Document Upload & Import  ·  *Phase 1 primary data path*
+## 5. Epic 3 — Document Upload & Import  ✅
 
 **Goal:** get transactions in via uploaded statement files with no stored credentials — the main way data enters in Phase 1. **Depends on:** E2 (account model). **Parallel with:** Epics 5, 6. **Priority: high.**
 
@@ -152,7 +153,7 @@ flowchart TD
 
 ---
 
-## 6. Epic 4 — Categories & Sub-categories
+## 6. Epic 4 — Categories & Sub-categories  ✅
 
 **Goal:** household category structure with safe management. **Depends on:** E0. **Parallel with:** Epics 1, 2.
 
@@ -176,7 +177,7 @@ flowchart TD
 
 ---
 
-## 7. Epic 5 — Transactions
+## 7. Epic 5 — Transactions  ✅
 
 **Goal:** view, search, and correct transactions. **Depends on:** E2, E4. **Parallel with:** Epics 3, 6.
 
@@ -189,7 +190,7 @@ flowchart TD
 
 ---
 
-## 8. Epic 6 — Budgets & Sinking Funds
+## 8. Epic 6 — Budgets & Sinking Funds  ✅
 
 **Goal:** monthly budgets plus amortized annual expenses. **Depends on:** E4. **Parallel with:** Epics 3, 5.
 
@@ -208,7 +209,7 @@ flowchart TD
 
 ---
 
-## 9. Epic 7 — Dashboard & Reports (Phase 1 subset)
+## 9. Epic 7 — Dashboard & Reports  ✅
 
 **Goal:** the at-a-glance shared view. **Depends on:** E5, E6. **Integrates last (Wave 4).**
 
@@ -226,7 +227,7 @@ flowchart TD
 
 ---
 
-## 9a. Epic 8 — Platform Access & Site Admin  *(added 2026-06-10)*
+## 9a. Epic 8 — Platform Access & Site Admin  ✅  *(added 2026-06-10)*
 
 **Goal:** Phase 1 is **invitation-only** — only people the site admin invites can create an account. Built as a policy toggle that later opens to a household-invites-household **beta**, then **general availability**. **This is platform-level access, distinct from the household *member* invites in Epic 1.** **Depends on:** E0. **Parallel with:** Epics 1, 2, 4 (Wave 2). **Start early — it gates signup.**
 
@@ -253,6 +254,42 @@ flowchart TD
   - AC: Explicit, revocable consent required before any data leaves the system; send only the normalized merchant (+ amount) — never account numbers, masks, or member identity; provider disclosed in consent copy.
 - **E9.4 — Categorization integration & rule caching.** *(PRD: AI-1 · Size: M)*
   - AC: On import (extends E3.4) and as a "suggest category" action (extends E4.6/E5.2), the user's LLM suggests a category; user confirms. On confirm, write a `CategoryRule` so the same merchant is never sent twice. Graceful fallback on missing key / provider error.
+
+---
+
+## 9c. Epic 10 — Dashboard & Transaction UX Polish  *(added 2026-06-12)*
+
+**Goal:** bring the Dashboard and Transactions pages fully in line with `docs/wireframes-phase1.html`, introduce a user profile + minimal Settings page (display name → avatar initials), add an uncategorized-transaction badge to the nav, and let users exclude individual transactions from all budget/accounting calculations. **Depends on:** E5 ✅, E7 ✅. **Wave 5.**
+
+- **E10.1 — User profile & Settings page.** *(Size: M)*
+  - AC: `User.displayName String?` added (migration). `PATCH /auth/profile` accepts `{ displayName }` and saves it.
+  - AC: `/settings` page (Profile section) — display-name text input, save button; updates immediately.
+  - AC: Avatar badge (user's first initial, blue circle) appears top-right of the content topbar in NavShell; clicking navigates to `/settings`.
+  - AC: Avatar initial derived from `displayName` when set, falling back to first char of email.
+
+- **E10.2 — Dashboard wireframe alignment.** *(Size: M)*
+  - AC: Chart layout matches wireframe — Spending Over Time bar chart on **left**, Spending by Category donut on **right**.
+  - AC: KPI cards show trend arrows (▲/▼) with percentage/amount vs. prior calendar month. Fallback text "No prior data" shown when previous-period totals are zero.
+  - AC: Spending by Category shows **top 4 named categories + "Other"** (5 items total). Clicking "Other" drills down to show top 4 within the Other group + another "Other" slice. Clicking a category in the drill-down navigates to Transactions filtered by that category + current month. Clicking "Other" in the drill-down navigates to Transactions with all Other-group category IDs + current month. Back button returns to top-level view.
+  - AC: Spending Over Time correctly includes uncategorized transactions (negative amount → expense bucket; positive → income bucket; isExcluded=true and transfer-kind excluded).
+
+- **E10.3 — Transaction filter UX.** *(Size: M)*
+  - AC: Transactions page defaults to Month-to-Date (first day of current month → today) when no URL params present.
+  - AC: MTD and YTD quick-filter buttons appear above the date inputs; clicking sets the date range and refreshes the list.
+  - AC: Category dropdown replaced by a hierarchical picker — shows only top-level categories; each is expandable to reveal sub-categories; selecting a parent filters by parent + all children.
+  - AC: A summary bar above the table shows the monetary total (`totalAmountMinor`) and count for all matched transactions when any filter is active. Sum excludes `isExcluded` transactions.
+  - AC: `categoryIds` URL param (comma-separated) accepted by the transactions page and API — used when navigating from the Dashboard "Other" drill-down.
+
+- **E10.4 — Uncategorized badge on nav.** *(Size: S)*
+  - AC: NavShell nav items support an optional `badge?: number` prop; renders a small red pill when `> 0`.
+  - AC: The "Transactions" nav item displays the count of uncategorized (and un-split) transactions for the household, fetched at app-shell level so it persists across page navigation.
+
+- **E10.5 — Exclude transaction from calculations.** *(Size: M)*
+  - AC: `Transaction.isExcluded Boolean @default(false)` added (migration).
+  - AC: `PATCH /households/{hid}/transactions/{id}/exclude` accepts `{ isExcluded: boolean }`, writes an audit record.
+  - AC: All financial aggregations (`getSummary`, `getSpendingByCategory`, `getSpendingOverTime`, `totalAmountMinor` aggregate) filter out `isExcluded = true` transactions.
+  - AC: In the recategorize panel, an "Exclude from budgets & reports" toggle calls the exclude endpoint.
+  - AC: Excluded transactions remain visible in the transaction list with a visual indicator (⊘ icon or strikethrough amount).
 
 ---
 

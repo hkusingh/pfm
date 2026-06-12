@@ -5,9 +5,10 @@ The product/requirements source of truth lives in [`/docs`](./docs); the build p
 [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md). When code and docs disagree, the docs win —
 raise the conflict rather than silently diverging.
 
-> **Current status (2026-06-10):** Epic 0 (Foundation) is **done**. Next up is Wave 2 — **Epic 1,
-> Epic 2, Epic 4, and the new Epic 8 (Platform Access & Site Admin)** in parallel. See the
-> **"Status & Next Up"** section at the top of `IMPLEMENTATION_PLAN.md` for the ordered work list.
+> **Current status (2026-06-12):** Waves 1–4 are **done** (Epics 0–8, E5, E7 merged to `main`).
+> Active work: **Epic 10 — Dashboard & Transaction UX Polish** on branch
+> `epic/10-dashboard-transactions-ux`. See the **"Status & Next Up"** section at the top of
+> `IMPLEMENTATION_PLAN.md` for the full ordered work list.
 > **Deployment is local-first — do not stand up a hosted environment yet** (IMPLEMENTATION_PLAN §5.2).
 
 ---
@@ -152,6 +153,10 @@ generated secrets + `AUTH_GATE=false`, starts Postgres, installs, migrates dev+t
   The user-facing app title comes from a single `APP_NAME` constant in `packages/config` (sourced from
   the `PUBLIC_APP_NAME` env var); never hardcode a product/brand name in UI copy, page titles, emails,
   or package names.
+- **Wireframes are the UI specification.** Before implementing any screen, panel, or component, open
+  `docs/wireframes-phase1.html` and match the layout, element positions, labels, and interactions
+  exactly. If the wireframe conflicts with a PRD requirement, raise the conflict — do not resolve it
+  silently. Deviations require explicit sign-off.
 
 ## 7. Branching (see CONTRIBUTING.md)
 
