@@ -55,3 +55,6 @@ tmp/
 
 # Office lock/owner temp files
 ~$*
+
+# Local statement upload storage (dev-only, Phase 1)
+apps/api/uploads/
