@@ -9,3 +9,4 @@ export * from './category';
 export * from './transaction';
 export * from './import';
 export * from './dashboard';
+export * from './budget';

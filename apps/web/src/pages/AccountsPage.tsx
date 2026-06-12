@@ -349,6 +349,7 @@ export function AccountsPage() {
     { label: 'Transactions', href: '/transactions', active: false },
     { label: 'Accounts', href: '/accounts', active: true },
     { label: 'Categories', href: '/categories', active: false },
+    { label: 'Budgets', href: '/budgets', active: false },
     { label: 'Household', href: '/settings/household', active: false },
     ...(me?.isSiteAdmin ? [{ label: 'Admin', href: '/admin', active: false }] : []),
   ];

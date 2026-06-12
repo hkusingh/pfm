@@ -142,6 +142,7 @@ export function SplitTransactionPage() {
     { label: 'Transactions', href: '/transactions', active: true },
     { label: 'Accounts', href: '/accounts', active: false },
     { label: 'Categories', href: '/categories', active: false },
+    { label: 'Budgets', href: '/budgets', active: false },
     { label: 'Household', href: '/settings/household', active: false },
     ...(me?.isSiteAdmin ? [{ label: 'Admin', href: '/admin', active: false }] : []),
   ];

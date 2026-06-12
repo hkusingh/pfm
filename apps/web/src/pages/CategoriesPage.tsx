@@ -149,6 +149,7 @@ export function CategoriesPage() {
     { label: 'Transactions', href: '/transactions', active: false },
     { label: 'Accounts', href: '/accounts', active: false },
     { label: 'Categories', href: '/categories', active: true },
+    { label: 'Budgets', href: '/budgets', active: false },
     { label: 'Household', href: '/settings/household', active: false },
     ...(me?.isSiteAdmin ? [{ label: 'Admin', href: '/admin', active: false }] : []),
   ];

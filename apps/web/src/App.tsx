@@ -12,6 +12,7 @@ import { CreateHouseholdPage } from './pages/CreateHouseholdPage';
 import { HouseholdSettingsPage } from './pages/HouseholdSettingsPage';
 import { AccountsPage } from './pages/AccountsPage';
 import { CategoriesPage } from './pages/CategoriesPage';
+import { BudgetsPage } from './pages/BudgetsPage';
 import { ReclassifyPage } from './pages/ReclassifyPage';
 import { SplitTransactionPage } from './pages/SplitTransactionPage';
 import { TransactionsPage } from './pages/TransactionsPage';
@@ -59,6 +60,7 @@ export function App() {
             <Route path="/accounts" element={<AccountsPage />} />
             <Route path="/transactions" element={<TransactionsPage />} />
             <Route path="/categories" element={<CategoriesPage />} />
+            <Route path="/budgets" element={<BudgetsPage />} />
             <Route path="/categories/:categoryId/reclassify" element={<ReclassifyPage />} />
             <Route path="/transactions/:txId/split" element={<SplitTransactionPage />} />
             <Route path="/settings/household" element={<HouseholdSettingsPage />} />

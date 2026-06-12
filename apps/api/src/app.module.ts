@@ -13,6 +13,7 @@ import { CategoryModule } from './category/category.module';
 import { TransactionModule } from './transaction/transaction.module';
 import { ImportModule } from './import/import.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { BudgetModule } from './budget/budget.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     TransactionModule,
     ImportModule,
     DashboardModule,
+    BudgetModule,
   ],
   controllers: [AppController],
   providers: [

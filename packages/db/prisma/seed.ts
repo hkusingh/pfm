@@ -33,6 +33,7 @@ async function main() {
       data: {
         email: SITE_ADMIN_EMAIL,
         passwordHash,
+        name: 'Site Admin',
         isSiteAdmin: true,
         emailVerifiedAt: new Date(),
       },

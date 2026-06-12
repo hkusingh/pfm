@@ -11,3 +11,4 @@ export * from './dedup';
 export * from './default-categories';
 export * from './storage';
 export * from './parsers';
+export * from './amortization';
