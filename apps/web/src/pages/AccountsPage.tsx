@@ -48,6 +48,13 @@ const ACCOUNT_TYPES = [
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'INR'];
 const CURRENCY_SYMBOLS: Record<string, string> = { USD: '$', EUR: '€', GBP: '£', INR: '₹' };
 
+const LIABILITY_TYPES = new Set(['credit_card', 'loan', 'mortgage']);
+
+function effectiveBalance(minor: number, type: string): number {
+  // Liabilities store the amount owed as positive; negate for net-worth math
+  return LIABILITY_TYPES.has(type) ? -minor : minor;
+}
+
 function formatBalance(minor: number, currency: string): string {
   const symbol = CURRENCY_SYMBOLS[currency] ?? currency;
   const abs = Math.abs(minor);
@@ -746,9 +753,9 @@ export function AccountsPage() {
                               <Badge variant="info" className="ml-1.5 text-[10px]">{acct.currency}</Badge>
                             )}
                         </p>
-                        <p className="text-xs text-gray-500">
+                        <p className={`text-xs ${LIABILITY_TYPES.has(acct.type) && acct.balanceMinor > 0 ? 'text-red-600' : 'text-gray-500'}`}>
                           {acct.mask ? `····${acct.mask} · ` : ''}
-                          {formatBalance(acct.balanceMinor, acct.currency)}
+                          {formatBalance(effectiveBalance(acct.balanceMinor, acct.type), acct.currency)}
                           {acct.currency !== 'USD' && (
                             <span className="text-gray-400"> · shown natively, not in USD totals</span>
                           )}
@@ -800,11 +807,11 @@ export function AccountsPage() {
                           {VISIBILITY_LABELS[acct.visibility]}
                         </Badge>
                       </p>
-                      <p className="text-xs text-gray-500">
+                      <p className={`text-xs ${LIABILITY_TYPES.has(acct.type) && acct.balanceMinor > 0 ? 'text-red-600' : 'text-gray-500'}`}>
                         {acct.ownerName ? `Connected by ${acct.ownerName} · ` : ''}
                         {acct.visibility === 'balance_only'
                           ? 'Counts toward totals · items hidden'
-                          : formatBalance(acct.balanceMinor, acct.currency)}
+                          : formatBalance(effectiveBalance(acct.balanceMinor, acct.type), acct.currency)}
                       </p>
                     </div>
                   </div>

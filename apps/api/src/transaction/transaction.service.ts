@@ -100,7 +100,13 @@ export class TransactionService {
         where.categoryId = null;
         where.hasSplit = false;
       } else {
-        where.categoryId = query.categoryId;
+        // Include all child categories so selecting a top-level filters all its sub-categories
+        const children = await prisma.category.findMany({
+          where: { parentId: query.categoryId },
+          select: { id: true },
+        });
+        const ids = [query.categoryId, ...children.map((c) => c.id)];
+        where.categoryId = ids.length === 1 ? ids[0] : { in: ids };
       }
     } else if (query.hasCategory === true) {
       // A split transaction counts as categorized even though categoryId is null

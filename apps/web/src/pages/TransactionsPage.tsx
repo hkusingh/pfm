@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { NavShell, Card, CategoryPicker, type PickerCategory } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -81,6 +81,13 @@ export function TransactionsPage() {
   const { clearTokens } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
+
+  // URL params pre-populate filters when navigating from the dashboard drill-down
+  const initCategory = searchParams.get('categoryId') ?? '';
+  const initFrom = searchParams.get('from') ?? '';
+  const initTo = searchParams.get('to') ?? '';
+  const fromDashboard = searchParams.get('source') === 'dashboard';
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api.get<Me>('/auth/me') });
   const { data: household } = useQuery({
@@ -89,14 +96,15 @@ export function TransactionsPage() {
   });
 
   // ── View tab ─────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<ViewTab>('uncategorized');
+  // If arriving from a dashboard drill-down with a category pre-selected, show "All" tab
+  const [activeTab, setActiveTab] = useState<ViewTab>(initCategory ? 'all' : 'uncategorized');
 
   // ── Filters ──────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('');
   const [filterAccount, setFilterAccount] = useState('');
-  const [filterCategory, setFilterCategory] = useState('');
-  const [filterFrom, setFilterFrom] = useState('');
-  const [filterTo, setFilterTo] = useState('');
+  const [filterCategory, setFilterCategory] = useState(initCategory);
+  const [filterFrom, setFilterFrom] = useState(initFrom);
+  const [filterTo, setFilterTo] = useState(initTo);
   const [page, setPage] = useState(1);
   const LIMIT = 50;
 
@@ -278,6 +286,16 @@ export function TransactionsPage() {
   return (
     <NavShell navItems={navItems} userEmail={me?.email ?? ''} onSignOut={handleSignOut}>
       <div className="p-6 max-w-5xl space-y-4">
+
+        {/* Back to dashboard breadcrumb (drill-down source) */}
+        {fromDashboard && (
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="text-xs text-blue-600 hover:underline"
+          >
+            ← Back to Dashboard
+          </button>
+        )}
 
         {/* Header */}
         <div className="flex items-center justify-between gap-4">

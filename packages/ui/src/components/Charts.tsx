@@ -119,9 +119,10 @@ interface DonutChartProps {
   formatValue?: (v: number) => string;
   height?: number;
   innerRadius?: number;
+  onSliceClick?: (entry: PieData) => void;
 }
 
-export function DonutChart({ data, formatValue, height = 260, innerRadius = 60 }: DonutChartProps) {
+export function DonutChart({ data, formatValue, height = 260, innerRadius = 60, onSliceClick }: DonutChartProps) {
   return (
     <ResponsiveContainer width="100%" height={height}>
       <PieChart>
@@ -133,6 +134,8 @@ export function DonutChart({ data, formatValue, height = 260, innerRadius = 60 }
           outerRadius={innerRadius + 40}
           paddingAngle={2}
           dataKey="value"
+          onClick={onSliceClick ? (entry) => onSliceClick(entry as PieData) : undefined}
+          style={onSliceClick ? { cursor: 'pointer' } : undefined}
         >
           {data.map((entry, i) => (
             <Cell key={entry.name} fill={entry.color ?? chart.palette[i % chart.palette.length]} />
