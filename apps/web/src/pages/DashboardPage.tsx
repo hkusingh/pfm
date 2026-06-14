@@ -294,12 +294,6 @@ export function DashboardPage() {
     }
   }
 
-  const userInitial = me?.name
-    ? me.name[0].toUpperCase()
-    : me?.email
-    ? me.email[0].toUpperCase()
-    : undefined;
-
   const drillTitle =
     drill.level === 'category' ? drill.parentName :
     drill.level === 'other' ? 'Other categories' :
@@ -312,34 +306,22 @@ export function DashboardPage() {
   return (
     <div className="p-6 space-y-6 max-w-6xl">
 
-        {/* Topbar: greeting + view toggle + avatar */}
+        {/* Topbar: greeting + view toggle */}
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-gray-900">{greeting(me?.name)}</h1>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1 rounded-lg bg-gray-100 p-1">
-              <button
-                onClick={() => setView('household')}
-                className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${view === 'household' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                Household
-              </button>
-              <button
-                onClick={() => setView('personal')}
-                className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${view === 'personal' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                Personal
-              </button>
-            </div>
-            <a
-              href="/settings"
-              aria-label="Go to settings"
-              className="flex items-center justify-center w-8 h-8 rounded-full text-white text-sm font-bold transition-colors"
-              style={{ background: '#1F4E79' }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2E6DA4'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#1F4E79'; }}
+          <div className="flex items-center gap-1 rounded-lg bg-gray-100 p-1">
+            <button
+              onClick={() => setView('household')}
+              className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${view === 'household' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
             >
-              {userInitial ?? '?'}
-            </a>
+              Household
+            </button>
+            <button
+              onClick={() => setView('personal')}
+              className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${view === 'personal' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Personal
+            </button>
           </div>
         </div>
 

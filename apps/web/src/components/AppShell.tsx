@@ -7,6 +7,7 @@ import { useAuth } from '../lib/auth';
 type Me = { id: string; email: string; name: string; isSiteAdmin: boolean };
 type Household = { id: string; name: string };
 type TxListMeta = { items: unknown[]; total: number };
+type Member = { id: string };
 
 export function AppShell() {
   const { clearTokens } = useAuth();
@@ -18,6 +19,11 @@ export function AppShell() {
     queryKey: ['household'],
     queryFn: () => api.get<Household>('/households/me'),
     retry: false,
+  });
+  const { data: members } = useQuery({
+    queryKey: ['household-members', household?.id],
+    queryFn: () => api.get<Member[]>(`/households/${household!.id}/members`),
+    enabled: !!household?.id,
   });
   const { data: uncatMeta } = useQuery({
     queryKey: ['uncategorized-count', household?.id],
@@ -63,6 +69,8 @@ export function AppShell() {
       navItems={navItems}
       userEmail={me?.email ?? ''}
       userInitial={userInitial}
+      householdName={household?.name}
+      memberCount={members?.length}
       onSignOut={handleSignOut}
       onNavigate={(href) => navigate(href)}
     >

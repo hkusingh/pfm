@@ -13,12 +13,14 @@ interface NavShellProps {
   userEmail?: string;
   userInitial?: string;
   appName?: string;
+  householdName?: string;
+  memberCount?: number;
   children: React.ReactNode;
   onSignOut?: () => void;
   onNavigate?: (href: string) => void;
 }
 
-export function NavShell({ navItems, userEmail, userInitial, appName = 'PFM', children, onSignOut, onNavigate }: NavShellProps) {
+export function NavShell({ navItems, userEmail, userInitial, appName = 'PFM', householdName, memberCount, children, onSignOut, onNavigate }: NavShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const initial = userInitial ?? (userEmail ? userEmail[0].toUpperCase() : '?');
 
@@ -26,7 +28,7 @@ export function NavShell({ navItems, userEmail, userInitial, appName = 'PFM', ch
     <div className="min-h-screen flex" style={{ background: '#eef1f6' }}>
       {/* Sidebar — desktop (sticky viewport-height so footer stays pinned) */}
       <aside className="hidden md:flex md:flex-col md:w-64 flex-shrink-0 sticky top-0 h-screen" style={{ background: '#142d44' }}>
-        <SidebarContent navItems={navItems} userEmail={userEmail} userInitial={initial} appName={appName} onSignOut={onSignOut} onNavigate={onNavigate} />
+        <SidebarContent navItems={navItems} userEmail={userEmail} userInitial={initial} appName={appName} householdName={householdName} memberCount={memberCount} onSignOut={onSignOut} onNavigate={onNavigate} />
       </aside>
 
       {/* Mobile overlay */}
@@ -39,7 +41,7 @@ export function NavShell({ navItems, userEmail, userInitial, appName = 'PFM', ch
             aria-hidden="true"
           />
           <aside className="relative flex flex-col w-64 shadow-xl" style={{ background: '#142d44' }}>
-            <SidebarContent navItems={navItems} userEmail={userEmail} userInitial={initial} appName={appName} onSignOut={onSignOut} onNavigate={onNavigate} />
+            <SidebarContent navItems={navItems} userEmail={userEmail} userInitial={initial} appName={appName} householdName={householdName} memberCount={memberCount} onSignOut={onSignOut} onNavigate={onNavigate} />
           </aside>
         </div>
       )}
@@ -72,11 +74,13 @@ interface SidebarContentProps {
   userEmail?: string;
   userInitial: string;
   appName: string;
+  householdName?: string;
+  memberCount?: number;
   onSignOut?: () => void;
   onNavigate?: (href: string) => void;
 }
 
-function SidebarContent({ navItems, userEmail, userInitial, appName, onSignOut, onNavigate }: SidebarContentProps) {
+function SidebarContent({ navItems, userEmail, userInitial, appName, householdName, memberCount, onSignOut, onNavigate }: SidebarContentProps) {
   return (
     <>
       {/* Brand */}
@@ -147,25 +151,46 @@ function SidebarContent({ navItems, userEmail, userInitial, appName, onSignOut, 
         ))}
       </nav>
 
+      {/* Household label + settings gear */}
+      {(householdName != null || memberCount != null) && (
+        <div
+          className="flex-shrink-0 flex items-center justify-between px-5 py-2"
+          style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+        >
+          <span style={{ color: '#8aa0b6', fontSize: 11 }}>
+            {householdName ?? ''}
+            {memberCount != null && (
+              <> &middot; {memberCount} {memberCount === 1 ? 'member' : 'members'}</>
+            )}
+          </span>
+          <a
+            href="/settings"
+            aria-label="Settings"
+            onClick={onNavigate ? (e) => { e.preventDefault(); onNavigate('/settings'); } : undefined}
+            style={{ color: '#8aa0b6', textDecoration: 'none', lineHeight: 1 }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#fff'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#8aa0b6'; }}
+          >
+            <GearIcon />
+          </a>
+        </div>
+      )}
+
       {/* Footer */}
       <div
         className="flex-shrink-0 px-5 py-3.5"
-        style={{ marginTop: 'auto', borderTop: '1px solid rgba(255,255,255,0.08)', color: '#8aa0b6', fontSize: 12 }}
+        style={{ borderTop: '1px solid rgba(255,255,255,0.08)', color: '#8aa0b6', fontSize: 12 }}
       >
         <div className="flex items-center gap-2.5">
-          <a
-            href="/settings"
-            aria-label="Go to settings"
-            onClick={onNavigate ? (e) => { e.preventDefault(); onNavigate('/settings'); } : undefined}
+          <div
             className="flex items-center justify-center flex-shrink-0"
             style={{
               width: 28, height: 28, borderRadius: '50%',
               background: '#1F4E79', color: '#fff', fontSize: 12, fontWeight: 700,
-              textDecoration: 'none',
             }}
           >
             {userInitial}
-          </a>
+          </div>
           <div className="min-w-0 flex-1">
             {userEmail && <p className="truncate" style={{ color: '#8aa0b6', fontSize: 11, margin: 0 }}>{userEmail}</p>}
             {onSignOut && (
@@ -189,6 +214,15 @@ function MenuIcon() {
   return (
     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
     </svg>
   );
 }
