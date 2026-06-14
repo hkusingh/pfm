@@ -1,8 +1,8 @@
 # Personal Finance Manager — Phase 1 Epics & Stories
 
 **Prepared for:** Harsh
-**Date:** June 4, 2026
-**Version:** 0.1
+**Date:** June 13, 2026
+**Version:** 0.3
 **Purpose:** Sprint-ready breakdown of Phase 1, structured for **parallel development by multiple people** and clean merging. Stories trace to the Phase 1 PRD (`phase1-spec.md`) and Technical Design (`phase1-technical-design.html`).
 
 ---
@@ -25,6 +25,8 @@ flowchart TD
   E5[Epic 5 — Transactions ✅]:::done
   E6[Epic 6 — Budgets & Sinking Funds ✅]:::done
   E7[Epic 7 — Dashboard ✅]:::done
+  E8[Epic 8 — Platform Access ✅]:::done
+  E10[Epic 10 — UX Polish ✅]:::done
 
   E0 --> E1
   E0 --> E2
@@ -35,6 +37,8 @@ flowchart TD
   E4 --> E6
   E5 --> E7
   E6 --> E7
+  E7 --> E10
+  E5 --> E10
   classDef k fill:#1F4E79,color:#fff,stroke:#1F4E79;
   classDef done fill:#d1fae5,stroke:#059669,color:#064e3b;
   classDef b fill:#fbf1df,stroke:#B9770E,color:#1c2530;
@@ -45,11 +49,12 @@ flowchart TD
 
 | Wave | Epics (parallel) | Notes |
 |---|---|---|
-| **Wave 1** | Epic 0 ✅ *(done)* | Foundation — everyone depends on it; land first. |
-| **Wave 2** | Epic 1 ✅, Epic 2 ✅, Epic 4 ✅, **Epic 8** ✅ | All merged to `main`. |
-| **Wave 3** | Epic 3 ✅, Epic 5 ✅, Epic 6 ✅, **Epic 9** *(pending)* | E3, E5, E6 merged to `main`; E9 not yet started. |
-| **Wave 4** | Epic 7 ✅ *(done)* | Integrates transactions + budgets; lands last. |
-| **Wave 5** | **Epic 10 (Dashboard & Transaction UX Polish)** | Wireframe alignment, user profile/settings, nav badge, transaction exclusion. |
+| **Wave 1** | Epic 0 ✅ | Foundation — everyone depends on it; land first. |
+| **Wave 2** | Epic 1 ✅, Epic 2 ✅, Epic 4 ✅, Epic 8 ✅ | All merged to `main`. |
+| **Wave 3** | Epic 3 ✅, Epic 5 ✅, Epic 6 ✅ | Merged to `main`. Epic 9 (BYOK AI) deferred. |
+| **Wave 4** | Epic 7 ✅ | Dashboard + reports. Merged to `main`. |
+| **Wave 5** | Epic 10 ✅ | UX Polish — all stories done, merged to `main` 2026-06-13. |
+| **Wave 6** | **Epic 11** *(planned)* | Rental Investment Tracking — see `docs/epic-11-rental-investment.md`. |
 
 > **Phase 1 scope note:** Phase 1 is a **limited-user test release** and is **invitation-only** (Epic 8). Data enters via **document/statement upload (Epic 3) and manual entry (Epic 2) only**. **Plaid live aggregation is deferred to Phase 2** — its stories are listed under Epic 2 as Phase 2 for forward planning, not Phase 1 work. A thin **BYOK AI categorization** slice (Epic 9) is included in Phase 1: households may supply their own LLM provider key; AI is always optional. The broader AI insights platform remains Phase 2.
 
@@ -257,39 +262,84 @@ flowchart TD
 
 ---
 
-## 9c. Epic 10 — Dashboard & Transaction UX Polish  *(added 2026-06-12)*
+## 9c. Epic 10 — Dashboard & Transaction UX Polish  ✅  *(added 2026-06-12, merged 2026-06-13)*
 
-**Goal:** bring the Dashboard and Transactions pages fully in line with `docs/wireframes-phase1.html`, introduce a user profile + minimal Settings page (display name → avatar initials), add an uncategorized-transaction badge to the nav, and let users exclude individual transactions from all budget/accounting calculations. **Depends on:** E5 ✅, E7 ✅. **Wave 5.**
+**Goal:** bring the Dashboard and Transactions pages fully in line with `docs/wireframes-phase1.html`, introduce a user profile + minimal Settings page (display name → avatar initials), add an uncategorized-transaction badge to the nav, let users exclude individual transactions from all budget/accounting calculations, and harden the import dedup flow. **Depends on:** E5 ✅, E7 ✅. **Wave 5. All stories merged to `main`.**
 
-- **E10.1 — User profile & Settings page.** *(Size: M)*
-  - AC: `User.displayName String?` added (migration). `PATCH /auth/profile` accepts `{ displayName }` and saves it.
-  - AC: `/settings` page (Profile section) — display-name text input, save button; updates immediately.
-  - AC: Avatar badge (user's first initial, blue circle) appears top-right of the content topbar in NavShell; clicking navigates to `/settings`.
-  - AC: Avatar initial derived from `displayName` when set, falling back to first char of email.
+- **E10.1 — User profile & Settings page.** ✅ *(Size: M)*
+  - `User.displayName String?` added (migration). `PATCH /auth/profile` accepts `{ displayName }` and saves it.
+  - `/settings` page with Profile section — display-name input, save button, live avatar preview.
+  - Avatar badge (user's first initial, blue circle) in NavShell topbar; clicking navigates to `/settings`.
+  - Avatar initial derived from `displayName` falling back to first char of email.
 
-- **E10.2 — Dashboard wireframe alignment.** *(Size: M)*
-  - AC: Chart layout matches wireframe — Spending Over Time bar chart on **left**, Spending by Category donut on **right**.
-  - AC: KPI cards show trend arrows (▲/▼) with percentage/amount vs. prior calendar month. Fallback text "No prior data" shown when previous-period totals are zero.
-  - AC: Spending by Category shows **top 4 named categories + "Other"** (5 items total). Clicking "Other" drills down to show top 4 within the Other group + another "Other" slice. Clicking a category in the drill-down navigates to Transactions filtered by that category + current month. Clicking "Other" in the drill-down navigates to Transactions with all Other-group category IDs + current month. Back button returns to top-level view.
-  - AC: Spending Over Time correctly includes uncategorized transactions (negative amount → expense bucket; positive → income bucket; isExcluded=true and transfer-kind excluded).
+- **E10.2 — Dashboard wireframe alignment.** ✅ *(Size: M)*
+  - Chart layout: Spending Over Time bar chart on **left**, Spending by Category donut on **right**.
+  - KPI cards show trend arrows (▲/▼) with percentage vs. prior calendar month; "No prior data" fallback.
+  - Spending by Category: top-4 named categories + "Other". Clicking "Other" drills into top-4 within that group + another "Other". Clicking a category navigates to Transactions filtered by category + current month. Back button returns to top level.
+  - Spending Over Time correctly includes uncategorized transactions; `isExcluded=true` and `transfer` kind excluded.
 
-- **E10.3 — Transaction filter UX.** *(Size: M)*
-  - AC: Transactions page defaults to Month-to-Date (first day of current month → today) when no URL params present.
-  - AC: MTD and YTD quick-filter buttons appear above the date inputs; clicking sets the date range and refreshes the list.
-  - AC: Category dropdown replaced by a hierarchical picker — shows only top-level categories; each is expandable to reveal sub-categories; selecting a parent filters by parent + all children.
-  - AC: A summary bar above the table shows the monetary total (`totalAmountMinor`) and count for all matched transactions when any filter is active. Sum excludes `isExcluded` transactions.
-  - AC: `categoryIds` URL param (comma-separated) accepted by the transactions page and API — used when navigating from the Dashboard "Other" drill-down.
+- **E10.3 — Transaction filter & sort UX.** ✅ *(Size: M)*
+  - Transactions page defaults to Month-to-Date when no URL params present.
+  - MTD / YTD / Custom quick-filter pill group; date range inputs only visible when Custom is active.
+  - Category filter replaced by multi-select hierarchical picker: selecting a parent selects all children; partial state shows dash indicator; "All expenses" shortcut; "Clear filter" footer.
+  - Sum bar shows **Expenses** and **Income** as separate figures (not combined); excludes `isExcluded` transactions.
+  - `categoryIds` URL param (comma-separated) accepted by page and API — used when drilling from Dashboard "Other" group.
+  - Column headers "Date" and "Amount" are clickable sort toggles (▼/▲/⇅); default: Date ▼ (newest first).
+  - "Needs Review" tab skips date filter so all uncategorized transactions appear regardless of import date.
 
-- **E10.4 — Uncategorized badge on nav.** *(Size: S)*
-  - AC: NavShell nav items support an optional `badge?: number` prop; renders a small red pill when `> 0`.
-  - AC: The "Transactions" nav item displays the count of uncategorized (and un-split) transactions for the household, fetched at app-shell level so it persists across page navigation.
+- **E10.4 — Uncategorized badge on nav.** ✅ *(Size: S)*
+  - NavShell nav items support optional `badge?: number` prop; renders small red pill when `> 0`.
+  - `AppShell` (extracted into `apps/web/src/components/AppShell.tsx`) fetches uncategorized count at app-shell level; wired to Transactions nav item; persists across page navigation.
 
-- **E10.5 — Exclude transaction from calculations.** *(Size: M)*
-  - AC: `Transaction.isExcluded Boolean @default(false)` added (migration).
-  - AC: `PATCH /households/{hid}/transactions/{id}/exclude` accepts `{ isExcluded: boolean }`, writes an audit record.
-  - AC: All financial aggregations (`getSummary`, `getSpendingByCategory`, `getSpendingOverTime`, `totalAmountMinor` aggregate) filter out `isExcluded = true` transactions.
-  - AC: In the recategorize panel, an "Exclude from budgets & reports" toggle calls the exclude endpoint.
-  - AC: Excluded transactions remain visible in the transaction list with a visual indicator (⊘ icon or strikethrough amount).
+- **E10.5 — Exclude transaction from calculations.** ✅ *(Size: M)*
+  - `Transaction.isExcluded Boolean @default(false)` added (migration).
+  - `PATCH /households/{hid}/transactions/{id}/exclude` accepts `{ isExcluded: boolean }`, writes audit record.
+  - All financial aggregations (`getSummary`, `getSpendingByCategory`, `getSpendingOverTime`, `totalAmountMinor`) filter out `isExcluded = true`.
+  - "Exclude from budgets & reports" toggle in the recategorize panel.
+  - Excluded transactions show ⊘ icon and strikethrough amount in the transaction list.
+
+- **E10.6 — Account editing & dynamic balance.** ✅ *(Size: M)*
+  - Accounts page: edit button per account; edit form covers name, type, institution, last-4, opening balance, and balance-as-of date.
+  - Balance is now **dynamically computed**: `displayedBalance = openingBalance + SUM(transactions WHERE postedDate ≥ balanceAsOf)`. The `balanceMinor` DB field is now the opening balance; incremental maintenance removed from create/update/delete transaction paths.
+  - `Account.balanceAsOf DateTime?` added (migration). Transactions before this date are excluded from balance calculation, allowing users to anchor a balance from a known point in time.
+  - `balanceAsOfDate` returned in `AccountResponseSchema`; shown as "· as of Jun 1, 2026" on the account row.
+
+- **E10.7 — Transaction delete.** ✅ *(Size: S)*
+  - `DELETE /households/{hid}/transactions/{id}` — deletes splits first (no cascade), then the transaction; writes audit record.
+  - Trash icon per row in the transaction list (gray → red on hover); browser confirm dialog before deletion.
+
+- **E10.8 — Import fuzzy-duplicate review flow.** ✅ *(Size: M)*
+  - Dedup is now two-stage: exact SHA-256 hash match (fast, silent skip) → fuzzy fallback (same account + date + amount + first word of normalized merchant matches → flagged for user review).
+  - Fuzzy matches returned in `ImportCommitResponse.flagged[]` instead of being silently skipped; each entry carries the incoming row and the matched existing transaction's merchant, category, and date.
+  - After import, a "Review possible duplicates" panel shows side-by-side transaction cards ("Already recorded" vs "From this import") with checkboxes; user selects which to import, clicks "Import selected" → `POST /import/{batchId}/confirm-flagged`.
+  - Review state persisted in `localStorage` under key `pfm_pending_duplicate_review` so the panel survives navigation away from the Accounts page.
+  - `merchantNormalized` is now stored on imported transactions (was missing, causing downstream classify mismatch).
+
+---
+
+## 9d. Epic 11 — Rental Investment Tracking  *(planned — Wave 6)*
+
+**Goal:** let households that own rental properties view rental income and expenses separately from personal finances. A Settings toggle controls whether rental appears in the main view or as a dedicated nav section. **Depends on:** E2 ✅, E5 ✅. **Full plan:** `docs/epic-11-rental-investment.md`.
+
+- **E11.1 — Account segment.** *(Size: S)*
+  - `AccountSegment { personal rental business }` enum; `Account.segment @default(personal)` (non-breaking migration).
+  - Segment shown as badge on account rows; segment picker in add/edit account form.
+
+- **E11.2 — Household rental view preference.** *(Size: S)*
+  - `Household.rentalViewMode String @default("blended")` — `blended` | `separate`.
+  - `PATCH /households/{id}/preferences` endpoint (audit logged).
+
+- **E11.3 — Settings: Finances section.** *(Size: S)*
+  - "Rental investments" radio in `/settings`: "Include in main view" / "Show as separate section".
+
+- **E11.4 — Conditional Rental nav + scoped views.** *(Size: M)*
+  - When `rentalViewMode = separate` and at least one rental account exists: "Rental" nav item appears.
+  - Main-view queries inject `?segment=personal`; Rental nav routes inject `?segment=rental`.
+  - No new page components — same Dashboard/Transactions/Budget pages with segment filter applied.
+
+- **E11.5 (Phase 2) — Rental Property entity.** *(future)*
+  - `RentalProperty` model (address, purchase price, units); accounts linked to a property.
+  - Per-property P&L, cap rate, cash-on-cash return, NOI on a dedicated `/rental/properties` page.
 
 ---
 
@@ -306,3 +356,5 @@ flowchart TD
 ## 11. Phase 1 Definition of Done (rollup)
 
 All epics complete and integrated such that the [PRD §7 acceptance checklist] passes: a two-person household can sign up with MFA, invite a partner with a role, add accounts by uploading statements and/or manual entry with visibility controls, manage categories/sub-categories, run budgets with sub-categories and a sinking fund, and view an accurate shared dashboard with the household/personal toggle and default charts — securely on the responsive web app.
+
+**Current status (2026-06-13):** Epics 0–8, 10 are merged to `main`. Epic 9 (BYOK AI) is not yet started. Epic 11 (Rental Investment) is planned. The core Phase 1 user journey is fully functional end-to-end on `main`.
