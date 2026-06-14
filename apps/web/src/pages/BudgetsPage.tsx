@@ -27,6 +27,10 @@ function minorToInput(minor: number): string {
   return (minor / 100).toFixed(2);
 }
 
+function minorToInputOrEmpty(minor: number): string {
+  return minor === 0 ? '' : minorToInput(minor);
+}
+
 function inputToMinor(value: string): number {
   const n = Math.round(parseFloat(value || '0') * 100);
   return Number.isFinite(n) ? n : 0;
@@ -365,7 +369,7 @@ function BudgetGroup({
   const ownBudgetMinor = item.budgetMinor - item.sinkingFundMinor - childrenBudgetMinor;
 
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(() => minorToInput(ownBudgetMinor));
+  const [draft, setDraft] = useState(() => minorToInputOrEmpty(ownBudgetMinor));
 
   const hasChildren = item.children.length > 0;
   const isExpanded = expanded.has(item.categoryId);
@@ -375,7 +379,7 @@ function BudgetGroup({
   const isOver = item.budgetMinor > 0 && item.spentMinor > item.budgetMinor;
 
   function startEdit() {
-    setDraft(minorToInput(ownBudgetMinor));
+    setDraft(minorToInputOrEmpty(ownBudgetMinor));
     setEditing(true);
   }
 
@@ -437,6 +441,7 @@ function BudgetGroup({
             step="0.01"
             min="0"
             autoFocus
+            placeholder="0.00"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
@@ -563,7 +568,7 @@ function SinkingFundsSection({
               <label className="block text-xs font-medium text-gray-700">Total amount</label>
               <div className="flex items-center gap-1">
                 <span className="text-sm text-gray-400">{CURRENCY_SYMBOLS[currency] ?? currency}</span>
-                <input type="number" step="0.01" min="0" value={total} onChange={(e) => setTotal(e.target.value)} required className="block w-full h-9 rounded-md border border-gray-300 px-2 text-sm" />
+                <input type="number" step="0.01" min="0" placeholder="0.00" value={total} onChange={(e) => setTotal(e.target.value)} required className="block w-full h-9 rounded-md border border-gray-300 px-2 text-sm" />
               </div>
             </div>
             <div className="space-y-1">
@@ -641,7 +646,7 @@ function SinkingFundRow({
   onDelete: (id: string) => void;
 }) {
   const [editingBalance, setEditingBalance] = useState(false);
-  const [balanceDraft, setBalanceDraft] = useState(() => minorToInput(fund.reserveBalanceMinor));
+  const [balanceDraft, setBalanceDraft] = useState(() => minorToInputOrEmpty(fund.reserveBalanceMinor));
 
   const progressRatio = fund.totalMinor > 0 ? Math.min(1, fund.reserveBalanceMinor / fund.totalMinor) : 0;
   const targetRatio = fund.totalMinor > 0 ? Math.min(1, fund.targetByNowMinor / fund.totalMinor) : 0;
@@ -683,6 +688,7 @@ function SinkingFundRow({
                 <span className="text-gray-400">{CURRENCY_SYMBOLS[currency] ?? currency}</span>
                 <input
                   type="number" step="0.01" min="0" autoFocus
+                  placeholder="0.00"
                   value={balanceDraft}
                   onChange={(e) => setBalanceDraft(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') saveBalance(); if (e.key === 'Escape') setEditingBalance(false); }}
@@ -692,7 +698,7 @@ function SinkingFundRow({
                 <button onClick={() => setEditingBalance(false)} className="text-gray-400 hover:text-gray-600">Cancel</button>
               </span>
             ) : (
-              <button onClick={() => { setBalanceDraft(minorToInput(fund.reserveBalanceMinor)); setEditingBalance(true); }} className="text-xs text-gray-500 hover:underline tabular-nums">
+              <button onClick={() => { setBalanceDraft(minorToInputOrEmpty(fund.reserveBalanceMinor)); setEditingBalance(true); }} className="text-xs text-gray-500 hover:underline tabular-nums">
                 {fmtMinor(fund.reserveBalanceMinor, currency)} of {fmtMinor(fund.totalMinor, currency)}
               </button>
             )}
