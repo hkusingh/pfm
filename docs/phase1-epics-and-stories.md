@@ -27,6 +27,7 @@ flowchart TD
   E7[Epic 7 — Dashboard ✅]:::done
   E8[Epic 8 — Platform Access ✅]:::done
   E10[Epic 10 — UX Polish ✅]:::done
+  E12[Epic 12 — Settings Page]:::b
 
   E0 --> E1
   E0 --> E2
@@ -39,6 +40,7 @@ flowchart TD
   E6 --> E7
   E7 --> E10
   E5 --> E10
+  E10 --> E12
   classDef k fill:#1F4E79,color:#fff,stroke:#1F4E79;
   classDef done fill:#d1fae5,stroke:#059669,color:#064e3b;
   classDef b fill:#fbf1df,stroke:#B9770E,color:#1c2530;
@@ -54,7 +56,7 @@ flowchart TD
 | **Wave 3** | Epic 3 ✅, Epic 5 ✅, Epic 6 ✅ | Merged to `main`. Epic 9 (BYOK AI) deferred. |
 | **Wave 4** | Epic 7 ✅ | Dashboard + reports. Merged to `main`. |
 | **Wave 5** | Epic 10 ✅ | UX Polish — all stories done, merged to `main` 2026-06-13. |
-| **Wave 6** | **Epic 11** *(planned)* | Rental Investment Tracking — see `docs/epic-11-rental-investment.md`. |
+| **Wave 6** | **Epic 11** *(planned)*, **Epic 12** *(planned)* | Rental Investment Tracking + full Settings page (parallel). |
 
 > **Phase 1 scope note:** Phase 1 is a **limited-user test release** and is **invitation-only** (Epic 8). Data enters via **document/statement upload (Epic 3) and manual entry (Epic 2) only**. **Plaid live aggregation is deferred to Phase 2** — its stories are listed under Epic 2 as Phase 2 for forward planning, not Phase 1 work. A thin **BYOK AI categorization** slice (Epic 9) is included in Phase 1: households may supply their own LLM provider key; AI is always optional. The broader AI insights platform remains Phase 2.
 
@@ -340,6 +342,66 @@ flowchart TD
 - **E11.5 (Phase 2) — Rental Property entity.** *(future)*
   - `RentalProperty` model (address, purchase price, units); accounts linked to a property.
   - Per-property P&L, cap rate, cash-on-cash return, NOI on a dedicated `/rental/properties` page.
+
+---
+
+## 9e. Epic 12 — User Account Settings (full `/settings` page)  *(added 2026-06-13)*
+
+**Goal:** complete the `/settings` page to match wireframe screen "8 · Settings" exactly. Epic 10 shipped a minimal Profile section (display name only). This Epic adds the remaining three functional cards — Login & security, Two-factor authentication management, and Preferences & data — so the page is fully featured. The AI categorization card is covered by Epic 9 and is out of scope here. **Depends on:** E0 ✅, E10 ✅. **Wave 6 (parallel with Epic 11).**
+
+### Wireframe: what the full page looks like
+
+Four cards in a 2-column grid, plus an AI card spanning full width (Epic 9):
+
+```
+┌──────────────────────────┬──────────────────────────┐
+│  Profile                 │  Login & security        │
+│  Full name               │  Current password        │
+│  Email (re-verify note)  │  New password            │
+│  Date of birth (opt.)    │  Confirm new password    │
+│  [Save profile]          │  [Update password]       │
+├──────────────────────────┼──────────────────────────┤
+│  Two-factor auth         │  Preferences & data      │
+│  • TOTP — Primary        │  Export my data          │
+│  • Email — Backup        │  Delete account          │
+│  [View recovery codes]   │                          │
+│  Note: MFA always on     │                          │
+└──────────────────────────┴──────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  AI categorization (optional · BYOK) — Epic 9        │
+└──────────────────────────────────────────────────────┘
+```
+
+---
+
+- **E12.1 — Profile completion.** *(Size: S)*
+  - Extend `User` model: add `email` change flow and `dateOfBirth Date?` (optional, not collected at signup).
+  - Profile card shows **Full name** (maps to `displayName`), **Email** (current value read-only with "Change" button that triggers re-verification flow), and **Date of birth** (optional date picker).
+  - Email change: user enters new email → server sends verification link to new address → on click, email updated and old address notified. Until verified, old email remains active. New API: `POST /auth/change-email`.
+  - Date of birth stored on `User`; returned in `GET /auth/me`; never exposed to other household members.
+  - AC: Save profile updates name and/or DOB. Email change initiates re-verification, not immediate swap.
+
+- **E12.2 — Change password.** *(Size: S)*
+  - Login & security card: Current password + New password + Confirm new password fields.
+  - New API: `POST /auth/change-password` — validates current password (argon2 verify), enforces minimum strength, updates hash, invalidates all existing refresh tokens (forces re-login on other devices).
+  - AC: Wrong current password → clear error. New passwords don't match → inline error. Success → confirmation banner; user stays logged in on the current device.
+
+- **E12.3 — MFA method management.** *(Size: M)*
+  - Two-factor authentication card shows enrolled methods with Primary / Backup labels and date added.
+  - **Manage TOTP:** re-enroll (generates new QR, requires confirming a code before replacing the old secret); remove only allowed if another method is active.
+  - **Manage email backup:** toggle email-code backup on/off (email is the account email; no separate entry needed).
+  - **View recovery codes:** shows the existing codes behind a password re-confirmation prompt; button to regenerate (invalidates old set, shows new set once).
+  - AC: At least one method must remain active at all times — UI prevents removing the last method.
+  - AC: Changing/removing an MFA method writes an audit record.
+  - Note: MFA cannot be disabled entirely (guardrail 3); this screen only lets users switch methods.
+
+- **E12.4 — Preferences & data.** *(Size: M)*
+  - Preferences & data card:
+    - **Export my data** — triggers `GET /households/{id}/export` (already implemented in Epic 0 privacy endpoints); button downloads the JSON/CSV bundle.
+    - **Delete account** — danger button; requires password re-confirmation modal; soft-deletes the `User` record, removes from household membership, sends confirmation email. If user is the sole primary owner of a household, they must transfer ownership or delete the household first (shown as a blocking message).
+  - > **Note on Base currency / Month starts on:** the wireframe shows these in the Preferences card but they are household-level settings, already editable in Household Settings (E1.5). They will appear here as **read-only** values with a link to "Edit in Household Settings" to avoid duplication and the authority confusion of editing household data from a personal settings screen.
+  - AC: Export produces a downloadable file within 5 seconds for typical household data sizes.
+  - AC: Delete account confirmation requires the user's current password; once confirmed, access is revoked immediately.
 
 ---
 
