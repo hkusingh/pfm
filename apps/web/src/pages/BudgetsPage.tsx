@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { Card, Button, Badge } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
 import type {
@@ -84,6 +85,7 @@ function spentColor(spentMinor: number, budgetMinor: number): string {
 
 export function BudgetsPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   const { data: household } = useQuery({
     queryKey: ['household'],
