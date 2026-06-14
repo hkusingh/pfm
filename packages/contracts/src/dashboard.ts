@@ -7,6 +7,8 @@ export const DashboardSummarySchema = z.object({
   currency: z.string(),
   incomeMinor: z.number().int(),
   spendingMinor: z.number().int(),
+  previousIncomeMinor: z.number().int().optional(),
+  previousSpendingMinor: z.number().int().optional(),
   from: z.string(),
   to: z.string(),
 });

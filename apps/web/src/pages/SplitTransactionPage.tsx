@@ -1,11 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { NavShell, Card, Button, CategoryPicker, type PickerCategory } from '@pfm/ui';
+import { Card, Button, CategoryPicker, type PickerCategory } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
-import { useAuth } from '../lib/auth';
 
-type Me = { id: string; email: string; name: string; isSiteAdmin: boolean };
 type Household = { id: string; name: string };
 
 type SplitItem = { categoryId: string | null; amountMinor: number };
@@ -45,10 +43,8 @@ function parseDollars(raw: string): number | null {
 export function SplitTransactionPage() {
   const { txId } = useParams<{ txId: string }>();
   const navigate = useNavigate();
-  const { clearTokens } = useAuth();
   const qc = useQueryClient();
 
-  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api.get<Me>('/auth/me') });
   const { data: household } = useQuery({
     queryKey: ['household'],
     queryFn: () => api.get<Household>('/households/me'),
@@ -87,7 +83,7 @@ export function SplitTransactionPage() {
       const total = (Math.abs(tx.amountMinor) / 100).toFixed(2);
       setRows([{ categoryId: null, raw: total }, { categoryId: null, raw: '' }]);
     }
-  }, [tx?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tx?.id]);
 
   const totalMinor = tx ? Math.abs(tx.amountMinor) : 0;
   const allocatedMinor = rows.reduce((sum, r) => sum + (parseDollars(r.raw) ?? 0), 0);
@@ -137,28 +133,10 @@ export function SplitTransactionPage() {
     onError: (err) => setSaveError(err instanceof ApiException ? err.message : 'Failed to clear splits.'),
   });
 
-  const navItems = [
-    { label: 'Dashboard', href: '/dashboard', active: false },
-    { label: 'Transactions', href: '/transactions', active: true },
-    { label: 'Accounts', href: '/accounts', active: false },
-    { label: 'Categories', href: '/categories', active: false },
-    { label: 'Budgets', href: '/budgets', active: false },
-    { label: 'Household', href: '/settings/household', active: false },
-    ...(me?.isSiteAdmin ? [{ label: 'Admin', href: '/admin', active: false }] : []),
-  ];
-
-  async function handleSignOut() {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (refreshToken) api.post('/auth/logout', { refreshToken }).catch(() => undefined);
-    clearTokens();
-    navigate('/login');
-  }
-
   const currency = tx?.currency ?? 'USD';
 
   return (
-    <NavShell navItems={navItems} userEmail={me?.email ?? ''} onSignOut={handleSignOut}>
-      <div className="p-6 max-w-2xl space-y-5">
+    <div className="p-6 max-w-2xl space-y-5">
 
         {/* Header */}
         <div className="space-y-1">
@@ -289,6 +267,5 @@ export function SplitTransactionPage() {
           </>
         )}
       </div>
-    </NavShell>
   );
 }

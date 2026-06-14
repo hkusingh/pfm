@@ -3,16 +3,6 @@ import { prisma } from '@pfm/db';
 import { buildScope } from '@pfm/core';
 import type { DashboardSummary, SpendingByCategoryItem, SpendingOverTimeItem } from '@pfm/contracts';
 
-// Minimal tx shape needed for income/spending aggregation (no name/color)
-type TxForAgg = {
-  amountMinor: number;
-  postedDate: Date;
-  hasSplit: boolean;
-  categoryKind: string | null;
-  splits: Array<{ amountMinor: number; categoryKind: string | null }>;
-};
-
-// Full tx shape needed for spending-by-category (includes name/color)
 type TxForCategory = {
   amountMinor: number;
   hasSplit: boolean;
@@ -65,49 +55,57 @@ export class DashboardService {
 
     const baseCurrency = household.baseCurrency;
 
-    const [accounts, rows] = await Promise.all([
+    // Previous calendar month range (UTC-consistent)
+    const fromDate = new Date(from);
+    const prevMonthStart = new Date(Date.UTC(fromDate.getUTCFullYear(), fromDate.getUTCMonth() - 1, 1));
+    const prevMonthEnd = new Date(Date.UTC(fromDate.getUTCFullYear(), fromDate.getUTCMonth(), 0));
+
+    const fetchTx = (start: Date, end: Date) =>
+      accountIds.length === 0
+        ? Promise.resolve([] as Array<{ amountMinor: number; category: { kind: string } | null }>)
+        : prisma.transaction.findMany({
+            where: { accountId: { in: accountIds }, postedDate: { gte: start, lte: end }, isExcluded: false },
+            select: { amountMinor: true, category: { select: { kind: true } } },
+          });
+
+    const [accounts, rows, prevRows] = await Promise.all([
       prisma.account.findMany({
         where: { id: { in: accountIds } },
         select: { balanceMinor: true, currency: true, type: true },
       }),
-      accountIds.length > 0
-        ? prisma.transaction.findMany({
-            where: { accountId: { in: accountIds }, postedDate: { gte: new Date(from), lte: new Date(to) } },
-            select: {
-              amountMinor: true,
-              postedDate: true,
-              hasSplit: true,
-              category: { select: { kind: true } },
-              splits: { select: { amountMinor: true, category: { select: { kind: true } } } },
-            },
-          })
-        : Promise.resolve([]),
+      fetchTx(new Date(from), new Date(to)),
+      fetchTx(prevMonthStart, prevMonthEnd),
     ]);
+
+    function sumIncomeSpending(txRows: Array<{ amountMinor: number; category: { kind: string } | null }>) {
+      let income = 0;
+      let spending = 0;
+      for (const tx of txRows) {
+        if (tx.category?.kind === 'transfer') continue;
+        if (tx.amountMinor > 0) income += tx.amountMinor;
+        else spending += Math.abs(tx.amountMinor);
+      }
+      return { income, spending };
+    }
 
     const LIABILITY_TYPES = new Set(['credit_card', 'loan', 'mortgage']);
     const netWorthMinor = accounts
       .filter((a) => a.currency === baseCurrency)
       .reduce((sum, a) => sum + (LIABILITY_TYPES.has(a.type) ? -a.balanceMinor : a.balanceMinor), 0);
 
-    let incomeMinor = 0;
-    let spendingMinor = 0;
+    const { income: incomeMinor, spending: spendingMinor } = sumIncomeSpending(rows);
+    const { income: previousIncomeMinor, spending: previousSpendingMinor } = sumIncomeSpending(prevRows);
 
-    for (const tx of rows) {
-      const items: TxForAgg = {
-        amountMinor: tx.amountMinor,
-        postedDate: tx.postedDate,
-        hasSplit: tx.hasSplit,
-        categoryKind: tx.category?.kind ?? null,
-        splits: tx.splits.map((s) => ({ amountMinor: s.amountMinor, categoryKind: s.category?.kind ?? null })),
-      };
-      for (const { amountMinor, categoryKind } of this.lineItems(items)) {
-        if (categoryKind === 'transfer') continue;
-        if (amountMinor > 0) incomeMinor += amountMinor;
-        else spendingMinor += Math.abs(amountMinor);
-      }
-    }
-
-    return { netWorthMinor, currency: baseCurrency, incomeMinor, spendingMinor, from, to };
+    return {
+      netWorthMinor,
+      currency: baseCurrency,
+      incomeMinor,
+      spendingMinor,
+      previousIncomeMinor,
+      previousSpendingMinor,
+      from,
+      to,
+    };
   }
 
   // ── E7.2 — Spending by category ───────────────────────────────────────────
@@ -123,7 +121,11 @@ export class DashboardService {
     if (accountIds.length === 0) return [];
 
     const rows = await prisma.transaction.findMany({
-      where: { accountId: { in: accountIds }, postedDate: { gte: new Date(from), lte: new Date(to) } },
+      where: {
+        accountId: { in: accountIds },
+        postedDate: { gte: new Date(from), lte: new Date(to) },
+        isExcluded: false,
+      },
       select: {
         amountMinor: true,
         hasSplit: true,
@@ -164,7 +166,7 @@ export class DashboardService {
 
       for (const item of items) {
         if (item.categoryKind === 'transfer') continue;
-        if (item.amountMinor >= 0) continue; // only expenses
+        if (item.amountMinor >= 0) continue;
         const key = item.categoryId ?? '__uncategorized__';
         const entry = map.get(key) ?? { name: item.categoryName ?? 'Uncategorized', color: item.categoryColor ?? null, total: 0 };
         entry.total += Math.abs(item.amountMinor);
@@ -196,56 +198,39 @@ export class DashboardService {
     if (accountIds.length === 0) return buckets;
 
     const now = new Date();
-    const from = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
+    const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1), 1));
 
     const rows = await prisma.transaction.findMany({
-      where: { accountId: { in: accountIds }, postedDate: { gte: from } },
-      select: {
-        amountMinor: true,
-        postedDate: true,
-        hasSplit: true,
-        category: { select: { kind: true } },
-        splits: { select: { amountMinor: true, category: { select: { kind: true } } } },
+      where: {
+        accountId: { in: accountIds },
+        postedDate: { gte: from },
+        isExcluded: false,
       },
+      select: { amountMinor: true, postedDate: true, category: { select: { kind: true } } },
     });
 
     const bucketMap = new Map(buckets.map((b) => [b.month, b]));
 
     for (const tx of rows) {
-      const monthKey = tx.postedDate.toISOString().slice(0, 7);
+      if (tx.category?.kind === 'transfer') continue;
+      const monthKey = `${tx.postedDate.getUTCFullYear()}-${String(tx.postedDate.getUTCMonth() + 1).padStart(2, '0')}`;
       const bucket = bucketMap.get(monthKey);
       if (!bucket) continue;
 
-      const agg: TxForAgg = {
-        amountMinor: tx.amountMinor,
-        postedDate: tx.postedDate,
-        hasSplit: tx.hasSplit,
-        categoryKind: tx.category?.kind ?? null,
-        splits: tx.splits.map((s) => ({ amountMinor: s.amountMinor, categoryKind: s.category?.kind ?? null })),
-      };
-      for (const { amountMinor, categoryKind } of this.lineItems(agg)) {
-        if (categoryKind === 'transfer') continue;
-        if (amountMinor > 0) bucket.incomeMinor += amountMinor;
-        else bucket.spendingMinor += Math.abs(amountMinor);
-      }
+      if (tx.amountMinor > 0) bucket.incomeMinor += tx.amountMinor;
+      else bucket.spendingMinor += Math.abs(tx.amountMinor);
     }
 
     return buckets;
   }
 
-  // ── Shared helpers ────────────────────────────────────────────────────────
-
-  private lineItems(tx: TxForAgg): Array<{ amountMinor: number; categoryKind: string | null }> {
-    if (tx.hasSplit) return tx.splits;
-    return [{ amountMinor: tx.amountMinor, categoryKind: tx.categoryKind }];
-  }
-
   private emptyMonthBuckets(months: number): SpendingOverTimeItem[] {
     const now = new Date();
     return Array.from({ length: months }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - (months - 1 - i), 1);
+      const offsetMonth = now.getUTCMonth() - (months - 1 - i);
+      const d = new Date(Date.UTC(now.getUTCFullYear(), offsetMonth, 1));
       return {
-        month: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+        month: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`,
         spendingMinor: 0,
         incomeMinor: 0,
       };

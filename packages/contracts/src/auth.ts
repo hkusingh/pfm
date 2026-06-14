@@ -74,6 +74,29 @@ export const RefreshResponseSchema = z.object({
 
 export type RefreshResponse = z.infer<typeof RefreshResponseSchema>;
 
+// ─── Update profile ───────────────────────────────────────────────────────────
+
+export const UpdateProfileBodySchema = z.object({
+  name: z.string().min(1, 'Name is required').max(100).trim(),
+});
+export type UpdateProfileBody = z.infer<typeof UpdateProfileBodySchema>;
+
+export const UpdateProfileResponseSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  name: z.string(),
+});
+export type UpdateProfileResponse = z.infer<typeof UpdateProfileResponseSchema>;
+
+// ─── Current user ─────────────────────────────────────────────────────────────
+
+export const MeResponseSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  name: z.string(),
+});
+export type MeResponse = z.infer<typeof MeResponseSchema>;
+
 // ─── Token payload (internal — not a contract endpoint) ──────────────────────
 
 export type AccessTokenPayload = {

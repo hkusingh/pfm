@@ -1,12 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import { NavShell, Button, FormField, Card, Badge } from '@pfm/ui';
+import { Button, FormField, Card, Badge } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
-import { useAuth } from '../lib/auth';
 
 type Me = { id: string; email: string; name: string; isSiteAdmin: boolean };
-type Household = { id: string; name: string };
+type Household = { id: string; name: string; baseCurrency?: string };
 type Account = {
   id: string;
   name: string;
@@ -15,6 +13,7 @@ type Account = {
   institution: string | null;
   mask: string | null;
   balanceMinor: number;
+  balanceAsOfDate: string | null;
   currency: string;
   visibility: 'shared' | 'private' | 'balance_only';
   ownerUserId: string | null;
@@ -33,7 +32,18 @@ type ImportPreview = {
   suggestedMapping: { dateCol: string; merchantCol: string; amountCol?: string; debitCol?: string; creditCol?: string } | null;
   autoMapped: boolean;
 };
-type ImportResult = { imported: number; skipped: number; errors: number };
+type FlaggedDuplicate = {
+  date: string;
+  merchant: string | null;
+  amountMinor: number;
+  existingId: string;
+  existingMerchant: string | null;
+  existingCategoryName: string | null;
+  existingCategoryColor: string | null;
+  existingPostedDate: string;
+};
+const LS_KEY = 'pfm_pending_duplicate_review';
+type ImportResult = { imported: number; skipped: number; errors: number; flagged: FlaggedDuplicate[] };
 
 const ACCOUNT_TYPES = [
   { value: 'checking', label: 'Checking' },
@@ -155,8 +165,6 @@ function BankIcon({ currency }: { currency: string }) {
 }
 
 export function AccountsPage() {
-  const { clearTokens } = useAuth();
-  const navigate = useNavigate();
   const qc = useQueryClient();
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api.get<Me>('/auth/me') });
@@ -179,6 +187,7 @@ export function AccountsPage() {
   const [addInstitution, setAddInstitution] = useState('');
   const [addMask, setAddMask] = useState('');
   const [addBalance, setAddBalance] = useState('0');
+  const [addBalanceAsOf, setAddBalanceAsOf] = useState('');
   const [addVisibility, setAddVisibility] = useState<'shared' | 'private' | 'balance_only'>('shared');
   const [addError, setAddError] = useState('');
 
@@ -190,7 +199,7 @@ export function AccountsPage() {
       setShowAddForm(false);
       setAddName(''); setAddType('checking'); setAddCurrency('USD');
       setAddInstitution(''); setAddMask(''); setAddBalance('0');
-      setAddVisibility('shared'); setAddError('');
+      setAddBalanceAsOf(''); setAddVisibility('shared'); setAddError('');
     },
     onError: (err) => setAddError(err instanceof ApiException ? err.message : 'Failed to create account.'),
   });
@@ -206,6 +215,7 @@ export function AccountsPage() {
       mask: addMask || undefined,
       visibility: addVisibility,
       initialBalanceMinor: isNaN(balanceCents) ? 0 : balanceCents,
+      balanceAsOfDate: addBalanceAsOf || undefined,
     });
   }
 
@@ -225,7 +235,27 @@ export function AccountsPage() {
   const [importCreditCol, setImportCreditCol] = useState('');
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importError, setImportError] = useState('');
+  // Flagged duplicate review state — seeded from localStorage so it survives navigation
+  const [flaggedRows, setFlaggedRows] = useState<FlaggedDuplicate[]>(() => {
+    try { return JSON.parse(localStorage.getItem(LS_KEY) ?? 'null')?.rows ?? []; } catch { return []; }
+  });
+  const [flaggedBatchId, setFlaggedBatchId] = useState<string>(() => {
+    try { return JSON.parse(localStorage.getItem(LS_KEY) ?? 'null')?.batchId ?? ''; } catch { return ''; }
+  });
+  const [flaggedSelected, setFlaggedSelected] = useState<Set<number>>(
+    () => new Set((flaggedRows ?? []).map((_, i) => i)),
+  );
+  const [flaggedSubmitting, setFlaggedSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Keep localStorage in sync whenever flaggedRows changes
+  useEffect(() => {
+    if (flaggedRows.length > 0) {
+      localStorage.setItem(LS_KEY, JSON.stringify({ batchId: flaggedBatchId, rows: flaggedRows }));
+    } else {
+      localStorage.removeItem(LS_KEY);
+    }
+  }, [flaggedRows, flaggedBatchId]);
 
   function getSampleValue(col: string): string {
     return importPreview?.sampleRows?.[0]?.[col] ?? '';
@@ -303,11 +333,36 @@ export function AccountsPage() {
       );
       setImportResult(result);
       setImportStep('done');
+      if (result.flagged?.length > 0) {
+        setFlaggedRows(result.flagged);
+        setFlaggedBatchId(importPreview.batchId);
+        setFlaggedSelected(new Set(result.flagged.map((_, i) => i)));
+      }
       qc.invalidateQueries({ queryKey: ['accounts'] });
       qc.invalidateQueries({ queryKey: ['import-batches'] });
     } catch (err) {
       setImportError(err instanceof ApiException ? err.message : 'Import failed');
       setImportStep('mapping');
+    }
+  }
+
+  async function submitFlagged() {
+    if (!household || flaggedRows.length === 0) return;
+    const toImport = flaggedRows.filter((_, i) => flaggedSelected.has(i));
+    if (toImport.length === 0) {
+      setFlaggedRows([]);
+      return;
+    }
+    setFlaggedSubmitting(true);
+    try {
+      await api.post(`/households/${household.id}/import/${flaggedBatchId}/confirm-flagged`, {
+        rows: toImport.map((r) => ({ date: r.date, merchant: r.merchant, amountMinor: r.amountMinor })),
+      });
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+      qc.invalidateQueries({ queryKey: ['import-batches'] });
+    } finally {
+      setFlaggedSubmitting(false);
+      setFlaggedRows([]);
     }
   }
 
@@ -320,6 +375,63 @@ export function AccountsPage() {
     setImportSplitCols(false);
     setImportDebitCol('');
     setImportCreditCol('');
+    setFlaggedRows([]);
+    setFlaggedBatchId('');
+    setFlaggedSelected(new Set());
+  }
+
+  // ─── Edit account state ──────────────────────────────────────────────────────
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editType, setEditType] = useState('checking');
+  const [editInstitution, setEditInstitution] = useState('');
+  const [editMask, setEditMask] = useState('');
+  const [editBalance, setEditBalance] = useState('');
+  const [editBalanceAsOf, setEditBalanceAsOf] = useState('');
+  const [editError, setEditError] = useState('');
+
+  function openEdit(acct: Account) {
+    setEditingId(acct.id);
+    setEditName(acct.name);
+    setEditType(acct.type);
+    setEditInstitution(acct.institution ?? '');
+    setEditMask(acct.mask ?? '');
+    setEditBalance((Math.abs(acct.balanceMinor) / 100).toFixed(2));
+    setEditBalanceAsOf(acct.balanceAsOfDate ?? '');
+    setEditError('');
+  }
+
+  function closeEdit() {
+    setEditingId(null);
+    setEditError('');
+  }
+
+  const editMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: object }) =>
+      api.patch<Account>(`/households/${household!.id}/accounts/${id}`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['accounts'] });
+      closeEdit();
+    },
+    onError: (err) => setEditError(err instanceof ApiException ? err.message : 'Failed to save.'),
+  });
+
+  function submitEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingId) return;
+    const balanceCents = Math.round(parseFloat(editBalance || '0') * 100);
+    editMutation.mutate({
+      id: editingId,
+      data: {
+        name: editName,
+        type: editType,
+        institution: editInstitution || undefined,
+        mask: editMask || undefined,
+        balanceMinor: isNaN(balanceCents) ? 0 : balanceCents,
+        balanceAsOfDate: editBalanceAsOf || null,
+      },
+    });
   }
 
   // ─── Account changes ─────────────────────────────────────────────────────────
@@ -337,30 +449,12 @@ export function AccountsPage() {
     qc.invalidateQueries({ queryKey: ['accounts'] });
   }
 
-  async function handleSignOut() {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (refreshToken) api.post('/auth/logout', { refreshToken }).catch(() => undefined);
-    clearTokens();
-    navigate('/login');
-  }
-
-  const navItems = [
-    { label: 'Dashboard', href: '/dashboard', active: false },
-    { label: 'Transactions', href: '/transactions', active: false },
-    { label: 'Accounts', href: '/accounts', active: true },
-    { label: 'Categories', href: '/categories', active: false },
-    { label: 'Budgets', href: '/budgets', active: false },
-    { label: 'Household', href: '/settings/household', active: false },
-    ...(me?.isSiteAdmin ? [{ label: 'Admin', href: '/admin', active: false }] : []),
-  ];
-
   const own = accounts?.own ?? [];
   const shared = accounts?.shared ?? [];
   const columns = importPreview?.columns ?? [];
 
   return (
-    <NavShell navItems={navItems} userEmail={me?.email ?? ''} onSignOut={handleSignOut}>
-      <div className="p-6 max-w-4xl space-y-5">
+    <div className="p-6 max-w-4xl space-y-5">
 
         {/* Page header */}
         <div className="flex items-center justify-between">
@@ -461,6 +555,18 @@ export function AccountsPage() {
                   value={addMask} onChange={(e) => setAddMask(e.target.value)} placeholder="4821" maxLength={4} />
                 <FormField label="Opening balance" name="addBalance" type="number"
                   value={addBalance} onChange={(e) => setAddBalance(e.target.value)} step="0.01" />
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Balance as of
+                    <span className="ml-1 font-normal text-gray-400 text-xs">— transactions before this date are ignored</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={addBalanceAsOf}
+                    onChange={(e) => setAddBalanceAsOf(e.target.value)}
+                    className="block w-full h-[38px] rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
               </div>
               {addError && <p className="text-sm text-red-600">{addError}</p>}
               <div className="flex gap-2">
@@ -722,9 +828,101 @@ export function AccountsPage() {
                   {importResult.errors > 0 && (
                     <span className="text-red-500"> · {importResult.errors} error{importResult.errors !== 1 ? 's' : ''}</span>
                   )}
+                  {importResult.flagged?.length > 0 && (
+                    <span className="text-amber-600"> · {importResult.flagged.length} need review</span>
+                  )}
                 </p>
               </div>
               <button onClick={resetImport} className="text-xs text-gray-400 hover:text-gray-600">Dismiss</button>
+            </div>
+          </Card>
+        )}
+
+        {/* Fuzzy-duplicate review panel — persists across navigation via localStorage */}
+        {flaggedRows.length > 0 && (
+          <Card padding="md">
+            <p className="text-sm font-semibold text-gray-900 mb-1">
+              Review possible duplicates
+            </p>
+            <p className="text-xs text-gray-500 mb-4">
+              These incoming transactions match an existing entry by date and amount but have slightly different descriptions (banks sometimes vary merchant names between exports). Tick the ones that are genuinely separate charges and click "Import selected".
+            </p>
+
+            <div className="space-y-3 mb-4">
+              {flaggedRows.map((row, i) => {
+                const checked = flaggedSelected.has(i);
+                const fmt = (minor: number) =>
+                  (minor < 0 ? '−$' : '+$') + (Math.abs(minor) / 100).toFixed(2);
+                const fmtDate = (d: string) =>
+                  new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+                return (
+                  <div
+                    key={i}
+                    className={`rounded-lg border text-xs transition-colors ${checked ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white'}`}
+                  >
+                    {/* Header row with checkbox */}
+                    <label className="flex items-center gap-2 px-3 py-2 border-b border-inherit cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          setFlaggedSelected((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(i)) next.delete(i); else next.add(i);
+                            return next;
+                          });
+                        }}
+                      />
+                      <span className={`font-medium ${checked ? 'text-amber-800' : 'text-gray-500'}`}>
+                        {checked ? 'Import as a separate transaction' : 'Skip (treat as duplicate)'}
+                      </span>
+                    </label>
+
+                    {/* Side-by-side transaction cards */}
+                    <div className="grid grid-cols-2 divide-x divide-gray-200">
+                      {/* Existing transaction */}
+                      <div className="px-3 py-2.5 space-y-1">
+                        <p className="font-medium text-gray-400 uppercase tracking-wide text-[10px]">Already recorded</p>
+                        <p className="font-semibold text-gray-900 truncate">{row.existingMerchant ?? <span className="italic text-gray-400">No merchant</span>}</p>
+                        <p className="text-gray-500">{fmtDate(row.existingPostedDate)}</p>
+                        {row.existingCategoryName ? (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium" style={{ backgroundColor: row.existingCategoryColor ? row.existingCategoryColor + '22' : '#e5e7eb', color: row.existingCategoryColor ?? '#6b7280' }}>
+                            {row.existingCategoryName}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 italic">Uncategorized</span>
+                        )}
+                        <p className={`font-semibold tabular-nums ${row.amountMinor < 0 ? 'text-gray-900' : 'text-emerald-600'}`}>{fmt(row.amountMinor)}</p>
+                      </div>
+
+                      {/* Incoming transaction */}
+                      <div className={`px-3 py-2.5 space-y-1 ${checked ? '' : 'opacity-50'}`}>
+                        <p className="font-medium text-gray-400 uppercase tracking-wide text-[10px]">From this import</p>
+                        <p className="font-semibold text-gray-900 truncate">{row.merchant ?? <span className="italic text-gray-400">No merchant</span>}</p>
+                        <p className="text-gray-500">{fmtDate(row.date)}</p>
+                        <span className="text-gray-400 italic">Not yet categorized</span>
+                        <p className={`font-semibold tabular-nums ${row.amountMinor < 0 ? 'text-gray-900' : 'text-emerald-600'}`}>{fmt(row.amountMinor)}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="primary"
+                loading={flaggedSubmitting}
+                disabled={flaggedSelected.size === 0}
+                onClick={submitFlagged}
+              >
+                Import selected ({flaggedSelected.size})
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setFlaggedRows([])}>
+                Skip all (treat all as duplicates)
+              </Button>
             </div>
           </Card>
         )}
@@ -743,43 +941,152 @@ export function AccountsPage() {
             ) : (
               <div className="divide-y divide-gray-100">
                 {own.map((acct) => (
-                  <div key={acct.id} className="flex items-center justify-between px-5 py-3 gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <BankIcon currency={acct.currency} />
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {acct.name}
-                          {acct.currency !== (household as any)?.baseCurrency &&
-                            acct.currency !== 'USD' && (
-                              <Badge variant="info" className="ml-1.5 text-[10px]">{acct.currency}</Badge>
+                  <div key={acct.id}>
+                    <div className="flex items-center justify-between px-5 py-3 gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <BankIcon currency={acct.currency} />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {acct.name}
+                            {acct.currency !== household?.baseCurrency &&
+                              acct.currency !== 'USD' && (
+                                <Badge variant="info" className="ml-1.5 text-[10px]">{acct.currency}</Badge>
+                              )}
+                          </p>
+                          <p className={`text-xs ${LIABILITY_TYPES.has(acct.type) && acct.balanceMinor > 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                            {acct.mask ? `····${acct.mask} · ` : ''}
+                            {formatBalance(effectiveBalance(acct.balanceMinor, acct.type), acct.currency)}
+                            {acct.balanceAsOfDate && (
+                              <span className="text-gray-400"> · as of {new Date(acct.balanceAsOfDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                             )}
-                        </p>
-                        <p className={`text-xs ${LIABILITY_TYPES.has(acct.type) && acct.balanceMinor > 0 ? 'text-red-600' : 'text-gray-500'}`}>
-                          {acct.mask ? `····${acct.mask} · ` : ''}
-                          {formatBalance(effectiveBalance(acct.balanceMinor, acct.type), acct.currency)}
-                          {acct.currency !== 'USD' && (
-                            <span className="text-gray-400"> · shown natively, not in USD totals</span>
-                          )}
-                        </p>
+                            {acct.currency !== 'USD' && (
+                              <span className="text-gray-400"> · shown natively, not in USD totals</span>
+                            )}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <div className="flex items-center gap-1">
-                        <select
-                          value={acct.visibility}
-                          onChange={(e) => changeVisibility(acct.id, e.target.value)}
-                          className="text-xs border border-gray-200 rounded-md px-2 py-1.5 bg-white text-gray-700"
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <div className="flex items-center gap-1">
+                          <select
+                            value={acct.visibility}
+                            onChange={(e) => changeVisibility(acct.id, e.target.value)}
+                            className="text-xs border border-gray-200 rounded-md px-2 py-1.5 bg-white text-gray-700"
+                          >
+                            <option value="shared">Shared ✓</option>
+                            <option value="private">Private</option>
+                            <option value="balance_only">Balance-only</option>
+                          </select>
+                          <VisibilityInfo />
+                        </div>
+                        <button
+                          onClick={() => editingId === acct.id ? closeEdit() : openEdit(acct)}
+                          className="text-xs text-blue-500 hover:text-blue-700"
                         >
-                          <option value="shared">Shared ✓</option>
-                          <option value="private">Private</option>
-                          <option value="balance_only">Balance-only</option>
-                        </select>
-                        <VisibilityInfo />
+                          {editingId === acct.id ? 'Cancel' : 'Edit'}
+                        </button>
+                        <button onClick={() => deleteAccount(acct.id)} className="text-xs text-red-400 hover:text-red-600">
+                          Delete
+                        </button>
                       </div>
-                      <button onClick={() => deleteAccount(acct.id)} className="text-xs text-red-400 hover:text-red-600">
-                        Delete
-                      </button>
                     </div>
+
+                    {/* Inline edit panel */}
+                    {editingId === acct.id && (
+                      <div className="px-5 pb-4">
+                        <form
+                          onSubmit={submitEdit}
+                          className="border border-blue-100 bg-blue-50 rounded-lg px-4 py-3 space-y-3"
+                        >
+                          <p className="text-xs font-semibold text-gray-800">Edit account</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <label className="block text-xs font-medium text-gray-600">Name</label>
+                              <input
+                                type="text"
+                                value={editName}
+                                onChange={(e) => setEditName(e.target.value)}
+                                required
+                                className="block w-full h-[32px] rounded-md border border-gray-300 px-2 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-xs font-medium text-gray-600">Type</label>
+                              <select
+                                value={editType}
+                                onChange={(e) => setEditType(e.target.value)}
+                                className="block w-full h-[32px] rounded-md border border-gray-300 px-2 text-sm bg-white"
+                              >
+                                {ACCOUNT_TYPES.map((t) => (
+                                  <option key={t.value} value={t.value}>{t.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-xs font-medium text-gray-600">Institution</label>
+                              <input
+                                type="text"
+                                value={editInstitution}
+                                onChange={(e) => setEditInstitution(e.target.value)}
+                                placeholder="e.g. Chase"
+                                className="block w-full h-[32px] rounded-md border border-gray-300 px-2 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-xs font-medium text-gray-600">Last 4 digits</label>
+                              <input
+                                type="text"
+                                value={editMask}
+                                onChange={(e) => setEditMask(e.target.value)}
+                                placeholder="4821"
+                                maxLength={4}
+                                className="block w-full h-[32px] rounded-md border border-gray-300 px-2 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-xs font-medium text-gray-600">
+                                Opening balance ({acct.currency})
+                              </label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={editBalance}
+                                onChange={(e) => setEditBalance(e.target.value)}
+                                className="block w-full h-[32px] rounded-md border border-gray-300 px-2 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-xs font-medium text-gray-600">
+                                Balance as of
+                                <span className="ml-1 font-normal text-gray-400">— ignore older transactions</span>
+                              </label>
+                              <input
+                                type="date"
+                                value={editBalanceAsOf}
+                                onChange={(e) => setEditBalanceAsOf(e.target.value)}
+                                className="block w-full h-[32px] rounded-md border border-gray-300 px-2 text-sm"
+                              />
+                            </div>
+                          </div>
+                          {editError && <p className="text-xs text-red-600">{editError}</p>}
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              type="submit"
+                              disabled={editMutation.isPending}
+                              className="px-3 py-1 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                            >
+                              {editMutation.isPending ? 'Saving…' : 'Save'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={closeEdit}
+                              className="px-3 py-1 text-xs font-medium border border-gray-300 rounded-md hover:bg-white"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -835,6 +1142,5 @@ export function AccountsPage() {
         </div>
 
       </div>
-    </NavShell>
   );
 }

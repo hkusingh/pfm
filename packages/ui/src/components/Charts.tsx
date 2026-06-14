@@ -59,7 +59,7 @@ export function SpendBarChart({ data, bars, formatValue, height = 300 }: SpendBa
         <Tooltip content={(props) => <ChartTooltip {...(props as TooltipProps<number, string>)} formatValue={formatValue} />} />
         <Legend wrapperStyle={{ fontSize: 12 }} />
         {bars.map((bar, i) => (
-          <Bar key={bar.key} dataKey={bar.key} name={bar.label} fill={bar.color ?? chart.palette[i % chart.palette.length]} radius={[3, 3, 0, 0]} />
+          <Bar key={bar.key} dataKey={bar.key} name={bar.label} fill={bar.color ?? chart.palette[i % chart.palette.length]} radius={[3, 3, 0, 0]} isAnimationActive={false} />
         ))}
       </BarChart>
     </ResponsiveContainer>

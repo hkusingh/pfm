@@ -27,6 +27,7 @@ type AccountRow = {
   institution: string | null;
   mask: string | null;
   balanceMinor: number;
+  balanceAsOf: Date | null;
   currency: string;
   visibility: string;
   ownerUserId: string | null;
@@ -34,7 +35,10 @@ type AccountRow = {
   createdAt: Date;
 };
 
-function toAccountResponse(a: AccountRow): AccountResponse {
+// txSumMinor = SUM of transactions on/after balanceAsOf (or all if no cutoff).
+// balanceMinor in DB = opening/initial balance set by the user.
+// Displayed balance = openingBalance + txSumMinor.
+function toAccountResponse(a: AccountRow, txSumMinor = 0): AccountResponse {
   return {
     id: a.id,
     name: a.name,
@@ -42,7 +46,8 @@ function toAccountResponse(a: AccountRow): AccountResponse {
     source: a.source as AccountResponse['source'],
     institution: a.institution,
     mask: a.mask,
-    balanceMinor: a.balanceMinor,
+    balanceMinor: a.balanceMinor + txSumMinor,
+    balanceAsOfDate: a.balanceAsOf ? a.balanceAsOf.toISOString().slice(0, 10) : null,
     currency: a.currency,
     visibility: a.visibility as AccountResponse['visibility'],
     ownerUserId: a.ownerUserId,
@@ -91,6 +96,7 @@ export class AccountService {
         mask: body.mask ?? null,
         visibility: body.visibility,
         balanceMinor: body.initialBalanceMinor,
+        balanceAsOf: body.balanceAsOfDate ? new Date(body.balanceAsOfDate) : null,
       },
       include: { owner: { select: { name: true } } },
     });
@@ -104,16 +110,37 @@ export class AccountService {
       orderBy: { createdAt: 'asc' },
     });
 
+    const accountIds = allAccounts.map((a) => a.id);
+
+    // Sum all transactions per account, then subtract pre-cutoff amounts for
+    // accounts that have a balanceAsOf date set.
+    const txSums = await prisma.transaction.groupBy({
+      by: ['accountId'],
+      where: { accountId: { in: accountIds } },
+      _sum: { amountMinor: true },
+    });
+    const txSumMap = new Map(txSums.map((s) => [s.accountId, s._sum.amountMinor ?? 0]));
+
+    const accountsWithCutoff = allAccounts.filter((a) => a.balanceAsOf !== null);
+    for (const a of accountsWithCutoff) {
+      const pre = await prisma.transaction.aggregate({
+        where: { accountId: a.id, postedDate: { lt: a.balanceAsOf! } },
+        _sum: { amountMinor: true },
+      });
+      txSumMap.set(a.id, (txSumMap.get(a.id) ?? 0) - (pre._sum.amountMinor ?? 0));
+    }
+
     const scope = buildScope(userId, householdId, 'household', allAccounts);
 
     const own: AccountResponse[] = [];
     const shared: AccountResponse[] = [];
 
     for (const a of allAccounts) {
+      const txSum = txSumMap.get(a.id) ?? 0;
       if (a.ownerUserId === userId) {
-        own.push(toAccountResponse(a));
+        own.push(toAccountResponse(a, txSum));
       } else if (canViewLineItems(scope, a.id) || scope.balanceOnlyAccountIds.has(a.id)) {
-        shared.push(toAccountResponse(a));
+        shared.push(toAccountResponse(a, txSum));
       }
     }
 
@@ -141,7 +168,14 @@ export class AccountService {
       throw new ForbiddenException('Access denied');
     }
 
-    return toAccountResponse(account);
+    const txAgg = await prisma.transaction.aggregate({
+      where: {
+        accountId,
+        ...(account.balanceAsOf ? { postedDate: { gte: account.balanceAsOf } } : {}),
+      },
+      _sum: { amountMinor: true },
+    });
+    return toAccountResponse(account, txAgg._sum.amountMinor ?? 0);
   }
 
   async updateAccount(
@@ -161,6 +195,9 @@ export class AccountService {
         ...(body.institution !== undefined && { institution: body.institution }),
         ...(body.mask !== undefined && { mask: body.mask }),
         ...(body.balanceMinor !== undefined && { balanceMinor: body.balanceMinor }),
+        ...('balanceAsOfDate' in body && {
+          balanceAsOf: body.balanceAsOfDate ? new Date(body.balanceAsOfDate) : null,
+        }),
       },
       include: { owner: { select: { name: true } } },
     });
@@ -228,24 +265,18 @@ export class AccountService {
       body.categoryId ??
       (await this.categories.applyRules(account.householdId, body.merchant));
 
-    const [tx] = await prisma.$transaction([
-      prisma.transaction.create({
-        data: {
-          accountId,
-          postedDate: new Date(body.postedDate),
-          merchant: body.merchant ?? null,
-          merchantNormalized: merchantNormalized || null,
-          amountMinor: body.amountMinor,
-          currency,
-          categoryId,
-          dedupHash,
-        },
-      }),
-      prisma.account.update({
-        where: { id: accountId },
-        data: { balanceMinor: { increment: body.amountMinor } },
-      }),
-    ]);
+    const tx = await prisma.transaction.create({
+      data: {
+        accountId,
+        postedDate: new Date(body.postedDate),
+        merchant: body.merchant ?? null,
+        merchantNormalized: merchantNormalized || null,
+        amountMinor: body.amountMinor,
+        currency,
+        categoryId,
+        dedupHash,
+      },
+    });
 
     return this.toTransactionResponse(tx);
   }
@@ -302,26 +333,18 @@ export class AccountService {
       merchantNormalized,
     );
 
-    const balanceDelta = newAmountMinor - existing.amountMinor;
-
-    const [updated] = await prisma.$transaction([
-      prisma.transaction.update({
-        where: { id: txId },
-        data: {
-          postedDate: newDate,
-          merchant: newMerchant ?? null,
-          merchantNormalized: merchantNormalized || null,
-          amountMinor: newAmountMinor,
-          ...(body.currency && { currency: body.currency }),
-          ...(body.categoryId !== undefined && { categoryId: body.categoryId }),
-          dedupHash,
-        },
-      }),
-      prisma.account.update({
-        where: { id: accountId },
-        data: { balanceMinor: { increment: balanceDelta } },
-      }),
-    ]);
+    const updated = await prisma.transaction.update({
+      where: { id: txId },
+      data: {
+        postedDate: newDate,
+        merchant: newMerchant ?? null,
+        merchantNormalized: merchantNormalized || null,
+        amountMinor: newAmountMinor,
+        ...(body.currency && { currency: body.currency }),
+        ...(body.categoryId !== undefined && { categoryId: body.categoryId }),
+        dedupHash,
+      },
+    });
 
     return this.toTransactionResponse(updated);
   }
@@ -338,13 +361,7 @@ export class AccountService {
     const tx = await prisma.transaction.findFirst({ where: { id: txId, accountId } });
     if (!tx) throw new NotFoundException('Transaction not found');
 
-    await prisma.$transaction([
-      prisma.transaction.delete({ where: { id: txId } }),
-      prisma.account.update({
-        where: { id: accountId },
-        data: { balanceMinor: { decrement: tx.amountMinor } },
-      }),
-    ]);
+    await prisma.transaction.delete({ where: { id: txId } });
   }
 
   private toTransactionResponse(t: {

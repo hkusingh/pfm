@@ -1,11 +1,9 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { NavShell, Card, CategoryPicker, type PickerCategory } from '@pfm/ui';
+import { Card, CategoryPicker, CategoryFilterPicker, type PickerCategory } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
-import { useAuth } from '../lib/auth';
 
-type Me = { id: string; email: string; name: string; isSiteAdmin: boolean };
 type Household = { id: string; name: string };
 type Account = { id: string; name: string };
 type Category = { id: string; name: string; color: string | null; parentId: string | null; kind?: string; children?: Category[] };
@@ -21,6 +19,7 @@ type TransactionItem = {
   categoryId: string | null;
   categoryName: string | null;
   categoryColor: string | null;
+  isExcluded: boolean;
   hasSplit: boolean;
   splits: Array<{ id: string; categoryId: string | null; categoryName: string | null; amountMinor: number }>;
   dedupHash: string;
@@ -30,6 +29,9 @@ type TransactionItem = {
 type TxListResponse = {
   items: TransactionItem[];
   total: number;
+  totalAmountMinor: number;
+  totalExpenseMinor: number;
+  totalIncomeMinor: number;
   page: number;
   limit: number;
 };
@@ -50,6 +52,13 @@ function formatAmount(minor: number, currency: string): string {
 function formatDate(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function toLocalDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function CategoryPill({
@@ -78,35 +87,80 @@ function CategoryPill({
 }
 
 export function TransactionsPage() {
-  const { clearTokens } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [searchParams] = useSearchParams();
 
+  // MTD defaults (computed once at mount, using local timezone so the date matches what the user sees)
+  const defaultFrom = useMemo(() => {
+    const d = new Date();
+    d.setDate(1);
+    return toLocalDateStr(d);
+  }, []);
+  const defaultTo = useMemo(() => toLocalDateStr(new Date()), []);
+
   // URL params pre-populate filters when navigating from the dashboard drill-down
-  const initCategory = searchParams.get('categoryId') ?? '';
-  const initFrom = searchParams.get('from') ?? '';
-  const initTo = searchParams.get('to') ?? '';
+  const initCategoryIds: string[] = useMemo(() => {
+    const multi = searchParams.get('categoryIds');
+    if (multi) return multi.split(',').filter(Boolean);
+    const single = searchParams.get('categoryId');
+    if (single && single !== 'uncategorized') return [single];
+    return [];
+  }, []); // intentionally empty — reads from searchParams only on mount
+  const initFrom = searchParams.get('from') ?? defaultFrom;
+  const initTo = searchParams.get('to') ?? defaultTo;
   const fromDashboard = searchParams.get('source') === 'dashboard';
 
-  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api.get<Me>('/auth/me') });
   const { data: household } = useQuery({
     queryKey: ['household'],
     queryFn: () => api.get<Household>('/households/me'),
   });
 
   // ── View tab ─────────────────────────────────────────────────────────────
-  // If arriving from a dashboard drill-down with a category pre-selected, show "All" tab
-  const [activeTab, setActiveTab] = useState<ViewTab>(initCategory ? 'all' : 'uncategorized');
+  const [activeTab, setActiveTab] = useState<ViewTab>('all');
 
   // ── Filters ──────────────────────────────────────────────────────────────
+  type QuickFilter = 'mtd' | 'ytd' | 'custom';
+  const initQuickFilter: QuickFilter =
+    searchParams.has('from') || searchParams.has('to') ? 'custom' : 'mtd';
+
   const [search, setSearch] = useState('');
   const [filterAccount, setFilterAccount] = useState('');
-  const [filterCategory, setFilterCategory] = useState(initCategory);
+  const [filterCategories, setFilterCategories] = useState<string[]>(initCategoryIds);
   const [filterFrom, setFilterFrom] = useState(initFrom);
   const [filterTo, setFilterTo] = useState(initTo);
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>(initQuickFilter);
+  const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
   const LIMIT = 50;
+
+  function toggleSort(field: 'date' | 'amount') {
+    if (sortBy === field) {
+      setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'));
+    } else {
+      setSortBy(field);
+      setSortDir(field === 'date' ? 'desc' : 'desc');
+    }
+    setPage(1);
+  }
+
+  function setMTD() {
+    const d = new Date();
+    d.setDate(1);
+    setFilterFrom(toLocalDateStr(d));
+    setFilterTo(toLocalDateStr(new Date()));
+    setQuickFilter('mtd');
+    setPage(1);
+  }
+
+  function setYTD() {
+    const now = new Date();
+    setFilterFrom(`${now.getFullYear()}-01-01`);
+    setFilterTo(toLocalDateStr(now));
+    setQuickFilter('ytd');
+    setPage(1);
+  }
 
   function buildParams(tab: ViewTab) {
     const p = new URLSearchParams();
@@ -114,14 +168,22 @@ export function TransactionsPage() {
     if (filterAccount) p.set('accountId', filterAccount);
     if (tab === 'uncategorized') {
       p.set('categoryId', 'uncategorized');
-    } else if (tab === 'categorized') {
-      p.set('hasCategory', 'true');
-      if (filterCategory) p.set('categoryId', filterCategory);
     } else {
-      if (filterCategory) p.set('categoryId', filterCategory);
+      if (tab === 'categorized') p.set('hasCategory', 'true');
+      if (filterCategories.length === 1) {
+        p.set('categoryId', filterCategories[0]);
+      } else if (filterCategories.length > 1) {
+        p.set('categoryIds', filterCategories.join(','));
+      }
     }
-    if (filterFrom) p.set('from', filterFrom);
-    if (filterTo) p.set('to', filterTo);
+    // Don't apply date range on the Needs Review tab — uncategorized transactions
+    // can be from any import period and users need to see all of them at once.
+    if (tab !== 'uncategorized') {
+      if (filterFrom) p.set('from', filterFrom);
+      if (filterTo) p.set('to', filterTo);
+    }
+    p.set('sortBy', sortBy);
+    p.set('sortDir', sortDir);
     p.set('page', String(page));
     p.set('limit', String(LIMIT));
     return p;
@@ -136,7 +198,7 @@ export function TransactionsPage() {
     enabled: !!household?.id,
   });
 
-  // Uncategorized count for the tab badge (always fetch, small query)
+  // Uncategorized count for the tab badge and nav badge
   const { data: uncatData } = useQuery({
     queryKey: ['transactions-uncat-count', household?.id],
     queryFn: () =>
@@ -192,6 +254,7 @@ export function TransactionsPage() {
   // ── Recategorize panel ───────────────────────────────────────────────────
   const [recatTx, setRecatTx] = useState<TransactionItem | null>(null);
   const [recatCatId, setRecatCatId] = useState<string | null>(null);
+  const [recatIsExcluded, setRecatIsExcluded] = useState(false);
   const [recatCreateRule, setRecatCreateRule] = useState(false);
   const [recatError, setRecatError] = useState('');
 
@@ -205,6 +268,7 @@ export function TransactionsPage() {
   function openRecat(tx: TransactionItem) {
     setRecatTx(tx);
     setRecatCatId(tx.categoryId ?? null);
+    setRecatIsExcluded(tx.isExcluded);
     setRecatCreateRule(false);
     setRecatError('');
     setShowNewCat(false);
@@ -250,43 +314,49 @@ export function TransactionsPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['transactions'] });
       qc.invalidateQueries({ queryKey: ['transactions-uncat-count'] });
+      qc.invalidateQueries({ queryKey: ['uncategorized-count'] });
       setRecatTx(null);
     },
     onError: (err) => setRecatError(err instanceof ApiException ? err.message : 'Failed to save.'),
   });
 
-  // ── Nav ──────────────────────────────────────────────────────────────────
-  const navItems = [
-    { label: 'Dashboard', href: '/dashboard', active: false },
-    { label: 'Transactions', href: '/transactions', active: true },
-    { label: 'Accounts', href: '/accounts', active: false },
-    { label: 'Categories', href: '/categories', active: false },
-    { label: 'Budgets', href: '/budgets', active: false },
-    { label: 'Household', href: '/settings/household', active: false },
-    ...(me?.isSiteAdmin ? [{ label: 'Admin', href: '/admin', active: false }] : []),
-  ];
+  const excludeMutation = useMutation({
+    mutationFn: ({ txId, isExcluded }: { txId: string; isExcluded: boolean }) => {
+      if (!household) throw new Error('missing household');
+      return api.patch(`/households/${household.id}/transactions/${txId}/exclude`, { isExcluded });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+    },
+  });
 
-  async function handleSignOut() {
-    const rt = localStorage.getItem('refreshToken');
-    if (rt) api.post('/auth/logout', { refreshToken: rt }).catch(() => undefined);
-    clearTokens();
-    navigate('/login');
-  }
+  const deleteMutation = useMutation({
+    mutationFn: (txId: string) => {
+      if (!household) throw new Error('missing household');
+      return api.delete(`/households/${household.id}/transactions/${txId}`);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+      qc.invalidateQueries({ queryKey: ['uncategorized-count'] });
+    },
+  });
 
   function switchTab(tab: ViewTab) {
     setActiveTab(tab);
     setPage(1);
-    setFilterCategory('');
+    setFilterCategories([]);
     setClassifyResult(null);
   }
 
   const items = txData?.items ?? [];
   const total = txData?.total ?? 0;
   const totalPages = Math.ceil(total / LIMIT);
+  const totalExpenseMinor = txData?.totalExpenseMinor ?? 0;
+  const totalIncomeMinor = txData?.totalIncomeMinor ?? 0;
+  const categoryCurrency = items[0]?.currency ?? 'USD';
 
   return (
-    <NavShell navItems={navItems} userEmail={me?.email ?? ''} onSignOut={handleSignOut}>
-      <div className="p-6 max-w-5xl space-y-4">
+    <div className="p-6 max-w-5xl space-y-4">
 
         {/* Back to dashboard breadcrumb (drill-down source) */}
         {fromDashboard && (
@@ -311,7 +381,7 @@ export function TransactionsPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-1 border-b border-gray-200">
+        <div className="flex items-center gap-1">
           {([
             ['uncategorized', 'Needs review'],
             ['categorized', 'Categorized'],
@@ -320,11 +390,18 @@ export function TransactionsPage() {
             <button
               key={tab}
               onClick={() => switchTab(tab)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              className="px-4 py-1.5 text-sm font-medium rounded-md transition-colors"
+              style={
                 activeTab === tab
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
+                  ? { background: '#142d44', color: '#fff' }
+                  : { background: 'transparent', color: '#6b7280' }
+              }
+              onMouseEnter={(e) => {
+                if (activeTab !== tab) (e.currentTarget as HTMLElement).style.color = '#111827';
+              }}
+              onMouseLeave={(e) => {
+                if (activeTab !== tab) (e.currentTarget as HTMLElement).style.color = '#6b7280';
+              }}
             >
               {label}
               {tab === 'uncategorized' && uncatCount > 0 && (
@@ -359,101 +436,112 @@ export function TransactionsPage() {
           </div>
         )}
 
-        {/* Filter row — shown only for all / categorized tabs */}
-        {activeTab !== 'uncategorized' && (
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <select
-              value={filterAccount}
-              onChange={(e) => { setFilterAccount(e.target.value); setPage(1); }}
-              className="h-[34px] rounded-lg border border-gray-200 px-2 text-xs bg-white text-gray-700"
+        {/* Filter row */}
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          {/* Account filter */}
+          <select
+            value={filterAccount}
+            onChange={(e) => { setFilterAccount(e.target.value); setPage(1); }}
+            className="h-[34px] rounded-lg border border-gray-200 px-2 text-xs bg-white text-gray-700"
+          >
+            <option value="">All accounts</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
+
+          {/* Category filter — only for categorized/all tabs */}
+          {activeTab !== 'uncategorized' && (
+            <CategoryFilterPicker
+              categories={categories as PickerCategory[]}
+              values={filterCategories}
+              onChange={(ids) => { setFilterCategories(ids); setPage(1); }}
+            />
+          )}
+
+          {/* Date range: MTD / YTD / Custom quick buttons */}
+          <div className="flex items-center gap-1 rounded-lg bg-gray-100 p-0.5">
+            <button
+              type="button"
+              onClick={setMTD}
+              className="px-2.5 py-1 text-xs rounded-md font-medium transition-colors"
+              style={quickFilter === 'mtd' ? { background: '#142d44', color: '#fff' } : {}}
             >
-              <option value="">All accounts</option>
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </select>
-
-            {activeTab === 'categorized' && (
-              <select
-                value={filterCategory}
-                onChange={(e) => { setFilterCategory(e.target.value); setPage(1); }}
-                className="h-[34px] rounded-lg border border-gray-200 px-2 text-xs bg-white text-gray-700"
-              >
-                <option value="">All categories</option>
-                {allCategories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.parentId ? `  ↳ ${c.name}` : c.name}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {activeTab === 'all' && (
-              <select
-                value={filterCategory}
-                onChange={(e) => { setFilterCategory(e.target.value); setPage(1); }}
-                className="h-[34px] rounded-lg border border-gray-200 px-2 text-xs bg-white text-gray-700"
-              >
-                <option value="">All categories</option>
-                <option value="uncategorized">Uncategorized</option>
-                {allCategories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.parentId ? `  ↳ ${c.name}` : c.name}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            <span className="text-gray-400 text-xs">from</span>
-            <input
-              type="date"
-              value={filterFrom}
-              onChange={(e) => { setFilterFrom(e.target.value); setPage(1); }}
-              className="h-[34px] rounded-lg border border-gray-200 px-2 text-xs bg-white"
-            />
-            <span className="text-gray-400 text-xs">to</span>
-            <input
-              type="date"
-              value={filterTo}
-              onChange={(e) => { setFilterTo(e.target.value); setPage(1); }}
-              className="h-[34px] rounded-lg border border-gray-200 px-2 text-xs bg-white"
-            />
-
-            {(filterAccount || filterCategory || filterFrom || filterTo || search) && (
-              <button
-                onClick={() => { setSearch(''); setFilterAccount(''); setFilterCategory(''); setFilterFrom(''); setFilterTo(''); setPage(1); }}
-                className="text-xs text-blue-600 hover:underline"
-              >
-                Clear filters
-              </button>
-            )}
-
-            {total > 0 && (
-              <span className="ml-auto text-xs text-gray-400">
-                {total} transaction{total !== 1 ? 's' : ''}
-              </span>
-            )}
+              MTD
+            </button>
+            <button
+              type="button"
+              onClick={setYTD}
+              className="px-2.5 py-1 text-xs rounded-md font-medium transition-colors"
+              style={quickFilter === 'ytd' ? { background: '#142d44', color: '#fff' } : {}}
+            >
+              YTD
+            </button>
+            <button
+              type="button"
+              onClick={() => setQuickFilter('custom')}
+              className="px-2.5 py-1 text-xs rounded-md font-medium transition-colors"
+              style={quickFilter === 'custom' ? { background: '#142d44', color: '#fff' } : {}}
+            >
+              Custom
+            </button>
           </div>
-        )}
 
-        {/* Account filter for uncategorized tab */}
-        {activeTab === 'uncategorized' && (
-          <div className="flex items-center gap-2">
-            <select
-              value={filterAccount}
-              onChange={(e) => { setFilterAccount(e.target.value); setPage(1); }}
-              className="h-[34px] rounded-lg border border-gray-200 px-2 text-xs bg-white text-gray-700"
+          {/* Date inputs — only visible when Custom is selected */}
+          {quickFilter === 'custom' && (
+            <>
+              <input
+                type="date"
+                value={filterFrom}
+                onChange={(e) => { setFilterFrom(e.target.value); setPage(1); }}
+                className="h-[34px] rounded-lg border border-gray-200 px-2 text-xs bg-white"
+              />
+              <span className="text-gray-400 text-xs">–</span>
+              <input
+                type="date"
+                value={filterTo}
+                onChange={(e) => { setFilterTo(e.target.value); setPage(1); }}
+                className="h-[34px] rounded-lg border border-gray-200 px-2 text-xs bg-white"
+              />
+            </>
+          )}
+
+          {(filterAccount || filterCategories.length > 0 || search || quickFilter !== 'mtd') && (
+            <button
+              onClick={() => {
+                setSearch('');
+                setFilterAccount('');
+                setFilterCategories([]);
+                setFilterFrom(defaultFrom);
+                setFilterTo(defaultTo);
+                setQuickFilter('mtd');
+                setPage(1);
+              }}
+              className="text-xs text-blue-600 hover:underline"
             >
-              <option value="">All accounts</option>
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </select>
-            {total > 0 && (
-              <span className="ml-auto text-xs text-gray-400">
-                {total} transaction{total !== 1 ? 's' : ''}
-              </span>
-            )}
+              Reset
+            </button>
+          )}
+        </div>
+
+        {/* Sum bar — shown when data is loaded */}
+        {txData && (
+          <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-2">
+            <span className="text-gray-500 text-xs">
+              {total} transaction{total !== 1 ? 's' : ''}
+            </span>
+            <div className="flex items-center gap-4">
+              {totalExpenseMinor !== 0 && (
+                <span className="text-xs text-gray-500">
+                  Expenses: <span className="font-semibold tabular-nums text-gray-900">{formatAmount(totalExpenseMinor, categoryCurrency)}</span>
+                </span>
+              )}
+              {totalIncomeMinor !== 0 && (
+                <span className="text-xs text-gray-500">
+                  Income: <span className="font-semibold tabular-nums text-emerald-600">{formatAmount(totalIncomeMinor, categoryCurrency)}</span>
+                </span>
+              )}
+            </div>
           </div>
         )}
 
@@ -473,11 +561,34 @@ export function TransactionsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100">
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wide w-20">Date</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wide w-24">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort('date')}
+                      className="flex items-center gap-1 hover:text-gray-700 transition-colors"
+                    >
+                      Date
+                      <span className="text-[10px] leading-none">
+                        {sortBy === 'date' ? (sortDir === 'desc' ? '▼' : '▲') : '⇅'}
+                      </span>
+                    </button>
+                  </th>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wide">Merchant</th>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wide hidden sm:table-cell">Account</th>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-400 uppercase tracking-wide">Category</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-400 uppercase tracking-wide">Amount</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-400 uppercase tracking-wide">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort('amount')}
+                      className="flex items-center gap-1 ml-auto hover:text-gray-700 transition-colors"
+                    >
+                      <span className="text-[10px] leading-none">
+                        {sortBy === 'amount' ? (sortDir === 'desc' ? '▼' : '▲') : '⇅'}
+                      </span>
+                      Amount
+                    </button>
+                  </th>
+                  <th className="w-8" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -486,7 +597,9 @@ export function TransactionsPage() {
                     <tr
                       key={tx.id}
                       className={`hover:bg-gray-50 ${
-                        categoryKind(tx.categoryId) === 'transfer'
+                        tx.isExcluded
+                          ? 'opacity-50'
+                          : categoryKind(tx.categoryId) === 'transfer'
                           ? 'bg-gray-50 opacity-70'
                           : !tx.categoryId && !tx.hasSplit
                           ? 'bg-amber-50'
@@ -514,24 +627,44 @@ export function TransactionsPage() {
                             Split ({tx.splits.length})
                           </button>
                         ) : (
-                          <CategoryPill
-                            name={tx.categoryName}
-                            color={tx.categoryColor}
-                            onClick={() => openRecat(tx)}
-                          />
+                          <div className="flex items-center gap-1.5">
+                            <CategoryPill
+                              name={tx.categoryName}
+                              color={tx.categoryColor}
+                              onClick={() => openRecat(tx)}
+                            />
+                            {tx.isExcluded && (
+                              <span title="Excluded from budgets & reports" className="text-gray-400 text-xs">⊘</span>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className={`px-4 py-2.5 text-right font-medium tabular-nums ${
-                        tx.amountMinor >= 0 ? 'text-emerald-600' : 'text-gray-900'
+                        tx.isExcluded ? 'text-gray-400 line-through' : tx.amountMinor >= 0 ? 'text-emerald-600' : 'text-gray-900'
                       }`}>
                         {formatAmount(tx.amountMinor, tx.currency)}
+                      </td>
+                      <td className="px-2 py-2.5 w-8">
+                        <button
+                          title="Delete transaction"
+                          className="text-gray-300 hover:text-red-500 transition-colors"
+                          onClick={() => {
+                            if (confirm(`Delete "${tx.merchant ?? 'this transaction'}" on ${formatDate(tx.postedDate)}? This cannot be undone.`)) {
+                              deleteMutation.mutate(tx.id);
+                            }
+                          }}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                            <path fillRule="evenodd" d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35l.815-8.15h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5A.75.75 0 0 1 9.95 6Z" clipRule="evenodd" />
+                          </svg>
+                        </button>
                       </td>
                     </tr>
 
                     {/* Recategorize panel — inline below the row */}
                     {recatTx?.id === tx.id && (
                       <tr key={`${tx.id}-recat`}>
-                        <td colSpan={5} className="px-4 py-0">
+                        <td colSpan={6} className="px-4 py-0">
                           <div className="border border-blue-100 bg-blue-50 rounded-lg px-4 py-3 mb-2 max-w-md">
                             <p className="text-xs font-semibold text-gray-800 mb-2">
                               Recategorize · {tx.merchant ?? 'this transaction'}
@@ -635,6 +768,20 @@ export function TransactionsPage() {
                                 </label>
                               )}
 
+                              {/* Exclude from budgets toggle */}
+                              <label className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer border-t border-blue-100 pt-2">
+                                <input
+                                  type="checkbox"
+                                  checked={recatIsExcluded}
+                                  onChange={(e) => {
+                                    setRecatIsExcluded(e.target.checked);
+                                    excludeMutation.mutate({ txId: tx.id, isExcluded: e.target.checked });
+                                  }}
+                                  className="rounded"
+                                />
+                                <span>Exclude from budgets &amp; reports</span>
+                              </label>
+
                               {recatError && <p className="text-xs text-red-600">{recatError}</p>}
 
                               <div className="flex gap-2 pt-1 flex-wrap">
@@ -694,6 +841,5 @@ export function TransactionsPage() {
         )}
 
       </div>
-    </NavShell>
   );
 }

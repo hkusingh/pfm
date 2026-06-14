@@ -13,7 +13,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ImportService } from './import.service';
-import { ImportCommitBodySchema } from '@pfm/contracts';
+import { ImportCommitBodySchema, ConfirmFlaggedBodySchema } from '@pfm/contracts';
 import { ok } from '../common/response';
 
 @Controller()
@@ -44,6 +44,18 @@ export class ImportController {
     if (!parsed.success) throw new BadRequestException(parsed.error.errors[0]?.message ?? 'Invalid body');
     const userId = req.user?.sub ?? '';
     return ok(await this.importService.commit(householdId, userId, parsed.data));
+  }
+
+  // POST /households/:householdId/import/:batchId/confirm-flagged
+  @Post('households/:householdId/import/:batchId/confirm-flagged')
+  async confirmFlagged(
+    @Param('householdId') householdId: string,
+    @Param('batchId') batchId: string,
+    @Body() rawBody: unknown,
+  ) {
+    const parsed = ConfirmFlaggedBodySchema.safeParse(rawBody);
+    if (!parsed.success) throw new BadRequestException(parsed.error.errors[0]?.message ?? 'Invalid body');
+    return ok(await this.importService.confirmFlagged(householdId, batchId, parsed.data));
   }
 
   // GET /households/:householdId/imports

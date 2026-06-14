@@ -15,6 +15,8 @@ export const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP', 'INR'] as const;
 
 // ─── Account CRUD ─────────────────────────────────────────────────────────────
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 export const CreateAccountBodySchema = z.object({
   name: z.string().min(1).max(100).trim(),
   type: z.enum(ACCOUNT_TYPES),
@@ -23,6 +25,7 @@ export const CreateAccountBodySchema = z.object({
   mask: z.string().max(10).trim().optional(),
   visibility: z.enum(VISIBILITY_KINDS).default('shared'),
   initialBalanceMinor: z.number().int().default(0),
+  balanceAsOfDate: z.string().regex(DATE_RE).optional(),
 });
 
 export const UpdateAccountBodySchema = z.object({
@@ -31,6 +34,7 @@ export const UpdateAccountBodySchema = z.object({
   institution: z.string().max(100).trim().optional(),
   mask: z.string().max(10).trim().optional(),
   balanceMinor: z.number().int().optional(),
+  balanceAsOfDate: z.string().regex(DATE_RE).nullable().optional(),
 });
 
 export const UpdateVisibilityBodySchema = z.object({
@@ -45,6 +49,7 @@ export const AccountResponseSchema = z.object({
   institution: z.string().nullable(),
   mask: z.string().nullable(),
   balanceMinor: z.number().int(),
+  balanceAsOfDate: z.string().nullable(),
   currency: z.string(),
   visibility: z.enum(VISIBILITY_KINDS),
   ownerUserId: z.string().nullable(),
