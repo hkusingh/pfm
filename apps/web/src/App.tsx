@@ -16,11 +16,13 @@ import { BudgetsPage } from './pages/BudgetsPage';
 import { ReclassifyPage } from './pages/ReclassifyPage';
 import { SplitTransactionPage } from './pages/SplitTransactionPage';
 import { TransactionsPage } from './pages/TransactionsPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { InviteAcceptPage } from './pages/InviteAcceptPage';
 import { AdminLayout } from './components/AdminLayout';
 import { InvitesPage } from './pages/admin/InvitesPage';
 import { UsersPage } from './pages/admin/UsersPage';
 import { PolicyPage } from './pages/admin/PolicyPage';
+import { AppShell } from './components/AppShell';
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -55,21 +57,26 @@ export function App() {
 
           {/* Protected */}
           <Route element={<ProtectedRoute />}>
-            <Route path="/dashboard" element={<DashboardPage />} />
+            {/* Onboarding — no shell */}
             <Route path="/onboarding/household" element={<CreateHouseholdPage />} />
-            <Route path="/accounts" element={<AccountsPage />} />
-            <Route path="/transactions" element={<TransactionsPage />} />
-            <Route path="/categories" element={<CategoriesPage />} />
-            <Route path="/budgets" element={<BudgetsPage />} />
-            <Route path="/categories/:categoryId/reclassify" element={<ReclassifyPage />} />
-            <Route path="/transactions/:txId/split" element={<SplitTransactionPage />} />
-            <Route path="/settings/household" element={<HouseholdSettingsPage />} />
             {/* Admin section — AdminLayout enforces isSiteAdmin */}
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<Navigate to="/admin/invites" replace />} />
               <Route path="invites" element={<InvitesPage />} />
               <Route path="users" element={<UsersPage />} />
               <Route path="policy" element={<PolicyPage />} />
+            </Route>
+            {/* Main app — persistent NavShell via AppShell layout */}
+            <Route element={<AppShell />}>
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/accounts" element={<AccountsPage />} />
+              <Route path="/transactions" element={<TransactionsPage />} />
+              <Route path="/categories" element={<CategoriesPage />} />
+              <Route path="/budgets" element={<BudgetsPage />} />
+              <Route path="/categories/:categoryId/reclassify" element={<ReclassifyPage />} />
+              <Route path="/transactions/:txId/split" element={<SplitTransactionPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/settings/household" element={<HouseholdSettingsPage />} />
             </Route>
           </Route>
 

@@ -1,11 +1,9 @@
 import { useState, useMemo } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { NavShell, Card, Button, CategoryPicker, type PickerCategory } from '@pfm/ui';
+import { Card, Button, CategoryPicker, type PickerCategory } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
-import { useAuth } from '../lib/auth';
 
-type Me = { id: string; email: string; name: string; isSiteAdmin: boolean };
 type Household = { id: string; name: string };
 
 type TransactionItem = {
@@ -52,10 +50,8 @@ export function ReclassifyPage() {
   const [searchParams] = useSearchParams();
   const categoryName = searchParams.get('name') ?? 'this category';
   const navigate = useNavigate();
-  const { clearTokens } = useAuth();
   const qc = useQueryClient();
 
-  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api.get<Me>('/auth/me') });
   const { data: household } = useQuery({
     queryKey: ['household'],
     queryFn: () => api.get<Household>('/households/me'),
@@ -105,7 +101,7 @@ export function ReclassifyPage() {
   function toggleOne(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) { next.delete(id); } else { next.add(id); }
       return next;
     });
   }
@@ -159,26 +155,8 @@ export function ReclassifyPage() {
     onError: (err) => setDeleteError(err instanceof ApiException ? err.message : 'Failed to delete.'),
   });
 
-  const navItems = [
-    { label: 'Dashboard', href: '/dashboard', active: false },
-    { label: 'Transactions', href: '/transactions', active: false },
-    { label: 'Accounts', href: '/accounts', active: false },
-    { label: 'Categories', href: '/categories', active: true },
-    { label: 'Budgets', href: '/budgets', active: false },
-    { label: 'Household', href: '/settings/household', active: false },
-    ...(me?.isSiteAdmin ? [{ label: 'Admin', href: '/admin', active: false }] : []),
-  ];
-
-  async function handleSignOut() {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (refreshToken) api.post('/auth/logout', { refreshToken }).catch(() => undefined);
-    clearTokens();
-    navigate('/login');
-  }
-
   return (
-    <NavShell navItems={navItems} userEmail={me?.email ?? ''} onSignOut={handleSignOut}>
-      <div className="p-6 max-w-4xl space-y-5">
+    <div className="p-6 max-w-4xl space-y-5">
 
         {/* Header */}
         <div className="space-y-1">
@@ -321,6 +299,5 @@ export function ReclassifyPage() {
         )}
 
       </div>
-    </NavShell>
   );
 }

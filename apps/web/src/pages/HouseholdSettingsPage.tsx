@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { NavShell, Button, FormField, Card, Badge } from '@pfm/ui';
+import { Button, FormField, Card, Badge } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
-import { useAuth } from '../lib/auth';
 import { useNavigate } from 'react-router-dom';
 
 type Household = {
@@ -60,7 +59,6 @@ function Avatar({ name, userId }: { name: string; userId: string }) {
 }
 
 export function HouseholdSettingsPage() {
-  const { clearTokens } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -155,43 +153,23 @@ export function HouseholdSettingsPage() {
     qc.invalidateQueries({ queryKey: ['household-members'] });
   }
 
-  const navItems = [
-    { label: 'Dashboard', href: '/dashboard', active: false },
-    { label: 'Transactions', href: '/transactions', active: false },
-    { label: 'Accounts', href: '/accounts', active: false },
-    { label: 'Categories', href: '/categories', active: false },
-    { label: 'Budgets', href: '/budgets', active: false },
-    { label: 'Household', href: '/settings/household', active: true },
-    ...(me?.isSiteAdmin ? [{ label: 'Admin', href: '/admin', active: false }] : []),
-  ];
-
-  async function handleSignOut() {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (refreshToken) api.post('/auth/logout', { refreshToken }).catch(() => undefined);
-    clearTokens();
-    navigate('/login');
-  }
-
   if (householdLoading) {
     return <div className="p-8 text-gray-400 text-sm">Loading…</div>;
   }
 
   if (!household) {
     return (
-      <NavShell navItems={navItems} userEmail={me?.email ?? ''} onSignOut={handleSignOut}>
-        <div className="p-6">
-          <p className="text-gray-600 text-sm">You are not in a household yet.</p>
-          <Button className="mt-4" onClick={() => navigate('/onboarding/household')}>
-            Create household
-          </Button>
-        </div>
-      </NavShell>
+      <div className="p-6">
+        <p className="text-gray-600 text-sm">You are not in a household yet.</p>
+        <Button className="mt-4" onClick={() => navigate('/onboarding/household')}>
+          Create household
+        </Button>
+      </div>
     );
   }
 
   return (
-    <NavShell navItems={navItems} userEmail={me?.email ?? ''} onSignOut={handleSignOut}>
-      <div className="p-6 max-w-5xl space-y-5">
+    <div className="p-6 max-w-5xl space-y-5">
 
         {/* Page header */}
         <div className="flex items-center justify-between">
@@ -405,6 +383,5 @@ export function HouseholdSettingsPage() {
           )}
         </div>
       </div>
-    </NavShell>
   );
 }

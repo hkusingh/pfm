@@ -35,6 +35,7 @@ export const TransactionListItemSchema = z.object({
   categoryColor: z.string().nullable(),
   hasSplit: z.boolean(),
   splits: z.array(TransactionSplitItemSchema),
+  isExcluded: z.boolean(),
   dedupHash: z.string(),
   createdAt: z.string(),
 });
@@ -43,10 +44,20 @@ export type TransactionListItem = z.infer<typeof TransactionListItemSchema>;
 export const TransactionListResponseSchema = z.object({
   items: z.array(TransactionListItemSchema),
   total: z.number(),
+  totalAmountMinor: z.number().int(),
+  totalExpenseMinor: z.number().int(),
+  totalIncomeMinor: z.number().int(),
   page: z.number(),
   limit: z.number(),
 });
 export type TransactionListResponse = z.infer<typeof TransactionListResponseSchema>;
+
+// ── Exclude transaction ───────────────────────────────────────────────────────
+
+export const ExcludeTransactionBodySchema = z.object({
+  isExcluded: z.boolean(),
+});
+export type ExcludeTransactionBody = z.infer<typeof ExcludeTransactionBodySchema>;
 
 // ── Recategorize ─────────────────────────────────────────────────────────────
 

@@ -35,10 +35,36 @@ export const ImportCommitBodySchema = z.object({
   mapping: CsvColumnMappingSchema.optional(),
 });
 
+// A row flagged as a possible fuzzy duplicate during commit — needs user review.
+export const FlaggedDuplicateSchema = z.object({
+  // Incoming row (the one being imported)
+  date: z.string(),
+  merchant: z.string().nullable(),
+  amountMinor: z.number().int(),
+  // Existing transaction it was matched against
+  existingId: z.string(),
+  existingMerchant: z.string().nullable(),
+  existingCategoryName: z.string().nullable(),
+  existingCategoryColor: z.string().nullable(),
+  existingPostedDate: z.string(),  // may differ slightly from incoming date
+});
+
 export const ImportCommitResponseSchema = z.object({
   imported: z.number().int(),
-  skipped: z.number().int(),   // dedup skips
+  skipped: z.number().int(),   // exact-hash dedup skips
   errors: z.number().int(),
+  flagged: z.array(FlaggedDuplicateSchema), // fuzzy matches needing user review
+});
+
+// ── Confirm flagged (step 3 — optional) ─────────────────────────────────────
+
+export const ConfirmFlaggedBodySchema = z.object({
+  // Rows from `flagged[]` the user chose to import anyway
+  rows: z.array(z.object({
+    date: z.string(),
+    merchant: z.string().nullable(),
+    amountMinor: z.number().int(),
+  })),
 });
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -47,3 +73,5 @@ export type CsvColumnMapping = z.infer<typeof CsvColumnMappingSchema>;
 export type ImportPreviewResponse = z.infer<typeof ImportPreviewResponseSchema>;
 export type ImportCommitBody = z.infer<typeof ImportCommitBodySchema>;
 export type ImportCommitResponse = z.infer<typeof ImportCommitResponseSchema>;
+export type FlaggedDuplicate = z.infer<typeof FlaggedDuplicateSchema>;
+export type ConfirmFlaggedBody = z.infer<typeof ConfirmFlaggedBodySchema>;

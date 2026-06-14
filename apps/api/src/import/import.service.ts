@@ -10,8 +10,8 @@ import {
   computeDedupHash,
   normalizeMerchant,
 } from '@pfm/core';
-import type { ImportPreviewResponse, ImportCommitBody, ImportCommitResponse } from '@pfm/contracts';
-import type { CsvColumnMapping } from '@pfm/contracts';
+import type { ImportPreviewResponse, ImportCommitBody, ImportCommitResponse, ConfirmFlaggedBody } from '@pfm/contracts';
+import type { CsvColumnMapping, FlaggedDuplicate } from '@pfm/contracts';
 import { parsePdf } from './pdf-parser';
 
 // Phase 1: local filesystem. Swap for GCS-backed impl in production.
@@ -229,10 +229,17 @@ export class ImportService {
       rows = parseOfx(buffer).rows;
     }
 
-    // Upsert transactions, skip duplicates via dedupHash
+    // Upsert transactions, skip duplicates via dedupHash.
+    // Exact-hash match is the fast path. When it misses (banks sometimes include
+    // variable trailing info — phone numbers, city codes — in the merchant name
+    // between different statement exports of the same account), fall back to a
+    // fuzzy check: same account + date + amount + same first word of normalized
+    // merchant. This catches "APPLE.COM/BILL" vs "APPLE.COM/BILL 800-275-2273 CA"
+    // and similar bank-description variations without false-positives.
     let imported = 0;
     let skipped = 0;
     let errors = 0;
+    const flagged: FlaggedDuplicate[] = [];
 
     for (const row of rows) {
       try {
@@ -249,6 +256,42 @@ export class ImportService {
         });
         if (existing) { skipped++; continue; }
 
+        // Fuzzy dedup fallback — only runs when exact hash misses.
+        // Same account + date + amount + matching first word of normalized merchant.
+        // Instead of silently skipping, surface these to the user for review.
+        const postedDate = new Date(row.date);
+        const candidates = await prisma.transaction.findMany({
+          where: { accountId: account.id, postedDate, amountMinor: row.amountMinor },
+          select: {
+            id: true,
+            merchant: true,
+            postedDate: true,
+            category: { select: { name: true, color: true } },
+          },
+        });
+        if (candidates.length > 0) {
+          const incomingPrefix = normalizedMerchant.split(' ')[0];
+          const fuzzyMatch = candidates.find((c) => {
+            if (!c.merchant && !row.merchant) return true;
+            if (!c.merchant || !row.merchant) return false;
+            const existingPrefix = normalizeMerchant(c.merchant).split(' ')[0];
+            return incomingPrefix && existingPrefix === incomingPrefix;
+          });
+          if (fuzzyMatch) {
+            flagged.push({
+              date: row.date,
+              merchant: row.merchant ?? null,
+              amountMinor: row.amountMinor,
+              existingId: fuzzyMatch.id,
+              existingMerchant: fuzzyMatch.merchant ?? null,
+              existingCategoryName: fuzzyMatch.category?.name ?? null,
+              existingCategoryColor: fuzzyMatch.category?.color ?? null,
+              existingPostedDate: fuzzyMatch.postedDate.toISOString().slice(0, 10),
+            });
+            continue;
+          }
+        }
+
         // Apply category rules if available
         let categoryId: string | null = null;
         if (row.merchant) {
@@ -261,8 +304,9 @@ export class ImportService {
         await prisma.transaction.create({
           data: {
             accountId: account.id,
-            postedDate: new Date(row.date),
+            postedDate,
             merchant: row.merchant,
+            merchantNormalized: normalizedMerchant || null,
             amountMinor: row.amountMinor,
             currency: account.currency,
             dedupHash,
@@ -271,7 +315,8 @@ export class ImportService {
           },
         });
         imported++;
-      } catch {
+      } catch (err) {
+        console.error('Import row error:', err);
         errors++;
       }
     }
@@ -281,7 +326,81 @@ export class ImportService {
       data: { status: 'done', importedCount: imported, skippedCount: skipped },
     });
 
-    return { imported, skipped, errors };
+    return { imported, skipped, errors, flagged };
+  }
+
+  // ── E3.2b — Confirm flagged (import fuzzy-matched rows user approved) ───────
+
+  async confirmFlagged(
+    householdId: string,
+    batchId: string,
+    body: ConfirmFlaggedBody,
+  ): Promise<{ imported: number }> {
+    const batch = await prisma.importBatch.findUnique({
+      where: { id: batchId },
+      include: { files: false },
+    });
+    if (!batch || batch.householdId !== householdId) {
+      throw new NotFoundException('Import batch not found');
+    }
+    if (!batch.accountId) throw new BadRequestException('Batch has no account');
+
+    const account = await prisma.account.findUnique({ where: { id: batch.accountId } });
+    if (!account) throw new BadRequestException('Account not found');
+
+    let imported = 0;
+    for (const row of body.rows) {
+      const normalizedMerchant = normalizeMerchant(row.merchant);
+      const postedDate = new Date(row.date);
+      await this.insertRow(account, batchId, householdId, row, postedDate, normalizedMerchant);
+      imported++;
+    }
+
+    // Bump importedCount on the batch
+    await prisma.importBatch.update({
+      where: { id: batchId },
+      data: { importedCount: { increment: imported } },
+    });
+
+    return { imported };
+  }
+
+  // ── Shared row-insert helper ──────────────────────────────────────────────
+
+  private async insertRow(
+    account: { id: string; currency: string },
+    batchId: string,
+    householdId: string,
+    row: { date: string; merchant: string | null; amountMinor: number },
+    postedDate: Date,
+    normalizedMerchant: string,
+  ) {
+    // Generate a unique hash by appending a random nonce so force-imported rows
+    // don't collide with the existing entry that caused the fuzzy match.
+    const nonce = Math.random().toString(36).slice(2);
+    const dedupHash = computeDedupHash(account.id, row.date, row.amountMinor, normalizedMerchant + nonce);
+
+    let categoryId: string | null = null;
+    if (row.merchant) {
+      const rule = await prisma.categoryRule.findFirst({
+        where: { householdId, merchantMatch: normalizedMerchant },
+      });
+      if (rule) categoryId = rule.categoryId;
+    }
+
+    await prisma.transaction.create({
+      data: {
+        accountId: account.id,
+        postedDate,
+        merchant: row.merchant,
+        merchantNormalized: normalizedMerchant || null,
+        amountMinor: row.amountMinor,
+        currency: account.currency,
+        dedupHash,
+        categoryId,
+        importBatchId: batchId,
+      },
+    });
   }
 
   // ── E3.3 — List import history ────────────────────────────────────────────

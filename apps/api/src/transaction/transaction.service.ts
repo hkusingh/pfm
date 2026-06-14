@@ -2,14 +2,14 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { prisma } from '@pfm/db';
 import { buildScope, canViewLineItems } from '@pfm/core';
 import { merchantRuleKey, merchantSimilarityScore, MERCHANT_MATCH_THRESHOLD } from '@pfm/core';
-import type { TransactionListItem, TransactionListResponse, RecategorizeTxBody, ApplyRulesResponse, PutSplitsBody } from '@pfm/contracts';
+import type { TransactionListItem, TransactionListResponse, RecategorizeTxBody, ApplyRulesResponse, PutSplitsBody, ExcludeTransactionBody } from '@pfm/contracts';
 import { TRANSFER_PATTERNS } from '../category/category.service';
 
 // Shared shape returned by all Prisma queries that include account/category/splits
 type TxWithIncludes = {
   id: string; accountId: string; postedDate: Date; merchant: string | null;
   amountMinor: number; currency: string; categoryId: string | null;
-  hasSplit: boolean; dedupHash: string; createdAt: Date;
+  hasSplit: boolean; isExcluded: boolean; dedupHash: string; createdAt: Date;
   account: { name: string };
   category: { name: string; color: string | null } | null;
   splits: Array<{
@@ -31,6 +31,7 @@ function txToListItem(t: TxWithIncludes): TransactionListItem {
     categoryName: t.category?.name ?? null,
     categoryColor: t.category?.color ?? null,
     hasSplit: t.hasSplit,
+    isExcluded: t.isExcluded,
     splits: t.splits.map((s) => ({
       id: s.id,
       categoryId: s.categoryId,
@@ -47,11 +48,14 @@ export interface ListTransactionsQuery {
   search?: string;
   accountId?: string;
   categoryId?: string;
+  categoryIds?: string;   // comma-separated list; used for "Other" drill-down from Dashboard
   hasCategory?: boolean;
   from?: string;
   to?: string;
   page?: number;
   limit?: number;
+  sortBy?: 'date' | 'amount';
+  sortDir?: 'asc' | 'desc';
 }
 
 @Injectable()
@@ -76,7 +80,7 @@ export class TransactionService {
     // Collect IDs of accounts whose line items this viewer may see
     const visibleAccountIds = [...scope.lineItemAccountIds];
     if (visibleAccountIds.length === 0) {
-      return { items: [], total: 0, page, limit };
+      return { items: [], total: 0, totalAmountMinor: 0, totalExpenseMinor: 0, totalIncomeMinor: 0, page, limit };
     }
 
     // Apply filters
@@ -85,7 +89,7 @@ export class TransactionService {
       : visibleAccountIds;
 
     if (accountFilter.length === 0) {
-      return { items: [], total: 0, page, limit };
+      return { items: [], total: 0, totalAmountMinor: 0, totalExpenseMinor: 0, totalIncomeMinor: 0, page, limit };
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -95,7 +99,16 @@ export class TransactionService {
     if (query.search) {
       where.merchant = { contains: query.search, mode: 'insensitive' };
     }
-    if (query.categoryId !== undefined) {
+    if (query.categoryIds !== undefined) {
+      // Multi-category filter (from Dashboard "Other" drill-down) — expand children for each parent ID
+      const parentIds = query.categoryIds.split(',').filter(Boolean);
+      const children = await prisma.category.findMany({
+        where: { parentId: { in: parentIds } },
+        select: { id: true },
+      });
+      const allIds = [...parentIds, ...children.map((c) => c.id)];
+      where.categoryId = allIds.length === 1 ? allIds[0] : { in: allIds };
+    } else if (query.categoryId !== undefined) {
       if (query.categoryId === 'uncategorized') {
         where.categoryId = null;
         where.hasSplit = false;
@@ -122,11 +135,23 @@ export class TransactionService {
       };
     }
 
-    const [total, rows] = await Promise.all([
+    // Sum at parent transaction level, excluding transfers and excluded transactions.
+    // Done in JS so the transfer check (category.kind) uses a LEFT JOIN via findMany,
+    // avoiding potential aggregate + OR relation filter issues.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sumWhere: any = { ...where, isExcluded: false };
+
+    const [total, sumRows, rows] = await Promise.all([
       prisma.transaction.count({ where }),
       prisma.transaction.findMany({
+        where: sumWhere,
+        select: { amountMinor: true, category: { select: { kind: true } } },
+      }),
+      prisma.transaction.findMany({
         where,
-        orderBy: [{ postedDate: 'desc' }, { createdAt: 'desc' }],
+        orderBy: query.sortBy === 'amount'
+          ? [{ amountMinor: query.sortDir === 'asc' ? 'asc' : 'desc' }, { postedDate: 'desc' }]
+          : [{ postedDate: query.sortDir === 'asc' ? 'asc' : 'desc' }, { createdAt: query.sortDir === 'asc' ? 'asc' : 'desc' }],
         skip: (page - 1) * limit,
         take: limit,
         include: {
@@ -137,9 +162,19 @@ export class TransactionService {
       }),
     ]);
 
+    let totalAmountMinor = 0;
+    let totalExpenseMinor = 0;
+    let totalIncomeMinor = 0;
+    for (const tx of sumRows) {
+      if (tx.category?.kind === 'transfer') continue;
+      totalAmountMinor += tx.amountMinor;
+      if (tx.amountMinor < 0) totalExpenseMinor += tx.amountMinor;
+      else totalIncomeMinor += tx.amountMinor;
+    }
+
     const items: TransactionListItem[] = rows.map(txToListItem);
 
-    return { items, total, page, limit };
+    return { items, total, totalAmountMinor, totalExpenseMinor, totalIncomeMinor, page, limit };
   }
 
   // ── Bulk apply category rules to all uncategorized transactions ──────────
@@ -371,6 +406,65 @@ export class TransactionService {
       prisma.transaction.update({ where: { id: txId }, data: { hasSplit: false } }),
     ]);
     return this.getTransaction(txId, householdId, viewerUserId);
+  }
+
+  // ── Shared helpers ───────────────────────────────────────────────────────
+
+  // ── E10.5 — Exclude / include a transaction from calculations ───────────
+
+  async excludeTransaction(
+    txId: string,
+    householdId: string,
+    viewerUserId: string,
+    body: ExcludeTransactionBody,
+  ): Promise<TransactionListItem> {
+    const tx = await this.findVerifiedTx(txId, householdId, viewerUserId);
+
+    const updated = await prisma.transaction.update({
+      where: { id: txId },
+      data: { isExcluded: body.isExcluded },
+      include: {
+        account: { select: { name: true } },
+        category: { select: { name: true, color: true } },
+        splits: { include: { category: { select: { name: true, color: true } } } },
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        householdId,
+        actorUserId: viewerUserId,
+        action: body.isExcluded ? 'transaction.exclude' : 'transaction.include',
+        targetType: 'Transaction',
+        targetId: txId,
+        metadata: { merchant: tx.merchant, amountMinor: tx.amountMinor },
+      },
+    });
+
+    return txToListItem(updated);
+  }
+
+  // ── Delete transaction ───────────────────────────────────────────────────
+
+  async deleteTransaction(txId: string, householdId: string, viewerUserId: string): Promise<void> {
+    const tx = await this.findVerifiedTx(txId, householdId, viewerUserId);
+
+    // Delete splits first (no cascade), then the transaction itself.
+    await prisma.$transaction([
+      prisma.transactionSplit.deleteMany({ where: { transactionId: txId } }),
+      prisma.transaction.delete({ where: { id: txId } }),
+    ]);
+
+    await prisma.auditLog.create({
+      data: {
+        householdId,
+        actorUserId: viewerUserId,
+        action: 'transaction.delete',
+        targetType: 'Transaction',
+        targetId: txId,
+        metadata: { merchant: tx.merchant, amountMinor: tx.amountMinor, postedDate: tx.postedDate },
+      },
+    });
   }
 
   // ── Shared helpers ───────────────────────────────────────────────────────

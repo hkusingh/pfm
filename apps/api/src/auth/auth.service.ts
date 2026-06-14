@@ -181,6 +181,15 @@ export class AuthService {
     return { ...user, mfaMethods: mfaMethods.map((m) => ({ ...m, type: m.type as string })) };
   }
 
+  async updateProfile(userId: string, name: string): Promise<{ id: string; email: string; name: string }> {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { name },
+      select: { id: true, email: true, name: true },
+    });
+    return user;
+  }
+
   async logout(rawRefreshToken: string): Promise<void> {
     const tokenHash = createHash('sha256').update(rawRefreshToken).digest('hex');
     await prisma.session.updateMany({

@@ -203,8 +203,9 @@ model Account {
   institution  String?
   // Last 4 digits of account number
   mask         String?
-  balanceMinor Int           @default(0)
-  currency     String        @default("USD")
+  balanceMinor  Int           @default(0)
+  balanceAsOf   DateTime?
+  currency      String        @default("USD")
   visibility   Visibility    @default(shared)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -240,6 +241,7 @@ model Transaction {
   updatedAt          DateTime  @updatedAt
 
   hasSplit           Boolean   @default(false)
+  isExcluded         Boolean   @default(false)
 
   account     Account           @relation(fields: [accountId], references: [id], onDelete: Cascade)
   category    Category?         @relation(fields: [categoryId], references: [id])

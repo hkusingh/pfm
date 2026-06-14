@@ -1,10 +1,11 @@
-import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Patch, Post } from '@nestjs/common';
 import { z } from 'zod';
 import {
   SignupBodySchema,
   LoginBodySchema,
   RefreshBodySchema,
   VerifyEmailBodySchema,
+  UpdateProfileBodySchema,
 } from '@pfm/contracts';
 import { ok } from '../common/response';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -84,5 +85,15 @@ export class AuthController {
   async me(@CurrentUser() user: AccessTokenPayload): Promise<ReturnType<typeof ok>> {
     const data = await this.auth.getMe(user.sub);
     return ok(data);
+  }
+
+  @Patch('profile')
+  @HttpCode(200)
+  async updateProfile(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body(new ZodValidationPipe(UpdateProfileBodySchema)) body: { name: string },
+  ): Promise<ReturnType<typeof ok>> {
+    const updated = await this.auth.updateProfile(user.sub, body.name);
+    return ok(updated);
   }
 }

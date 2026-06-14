@@ -1,11 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { NavShell, Button, Card } from '@pfm/ui';
+import { Button, Card } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
-import { useAuth } from '../lib/auth';
 
-type Me = { id: string; email: string; name: string; isSiteAdmin: boolean };
 type Household = { id: string; name: string };
 
 type Category = {
@@ -35,11 +33,9 @@ function ColorDot({ color }: { color: string | null }) {
 }
 
 export function CategoriesPage() {
-  const { clearTokens } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api.get<Me>('/auth/me') });
   const { data: household } = useQuery({
     queryKey: ['household'],
     queryFn: () => api.get<Household>('/households/me'),
@@ -142,25 +138,6 @@ export function CategoriesPage() {
     deleteError.toLowerCase().includes('sub-categor') ||
     deleteError.toLowerCase().includes('system categor');
 
-  // ── Nav ──────────────────────────────────────────────────────────────────
-
-  const navItems = [
-    { label: 'Dashboard', href: '/dashboard', active: false },
-    { label: 'Transactions', href: '/transactions', active: false },
-    { label: 'Accounts', href: '/accounts', active: false },
-    { label: 'Categories', href: '/categories', active: true },
-    { label: 'Budgets', href: '/budgets', active: false },
-    { label: 'Household', href: '/settings/household', active: false },
-    ...(me?.isSiteAdmin ? [{ label: 'Admin', href: '/admin', active: false }] : []),
-  ];
-
-  async function handleSignOut() {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (refreshToken) api.post('/auth/logout', { refreshToken }).catch(() => undefined);
-    clearTokens();
-    navigate('/login');
-  }
-
   // All parent categories (top-level) available for reassign or as parent selector
   const topLevel = categories.filter((c) => !c.parentId);
 
@@ -174,17 +151,25 @@ export function CategoriesPage() {
   const formIsOpen = formName !== '' || editingId !== null;
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const collapsedInitialized = useRef(false);
+  useEffect(() => {
+    if (!collapsedInitialized.current && categories.length > 0) {
+      setCollapsed(new Set(categories.map((c) => c.id)));
+      collapsedInitialized.current = true;
+    }
+  }, [categories]);
+
   function toggleCollapsed(id: string) {
     setCollapsed((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) { next.delete(id); } else { next.add(id); }
       return next;
     });
   }
 
   return (
-    <NavShell navItems={navItems} userEmail={me?.email ?? ''} onSignOut={handleSignOut}>
-      <div className="p-6 max-w-5xl space-y-5">
+    <>
+    <div className="p-6 max-w-5xl space-y-5">
 
         {/* Page header */}
         <div className="flex items-center justify-between">
@@ -478,7 +463,6 @@ export function CategoriesPage() {
           </div>
         </div>
       )}
-
-    </NavShell>
+    </>
   );
 }

@@ -1,9 +1,7 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { NavShell, Card, Button, Badge } from '@pfm/ui';
+import { Card, Button, Badge } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
-import { useAuth } from '../lib/auth';
 import type {
   BudgetSummaryItem,
   BudgetSummaryResponse,
@@ -14,7 +12,6 @@ import type {
   SinkingFundStartMode,
 } from '@pfm/contracts';
 
-type Me = { id: string; email: string; name: string; isSiteAdmin: boolean };
 type Household = { id: string; name: string };
 type Category = { id: string; name: string; kind: 'expense' | 'income' | 'transfer'; children?: Category[] };
 
@@ -82,11 +79,8 @@ function spentColor(spentMinor: number, budgetMinor: number): string {
 }
 
 export function BudgetsPage() {
-  const { clearTokens } = useAuth();
-  const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api.get<Me>('/auth/me') });
   const { data: household } = useQuery({
     queryKey: ['household'],
     queryFn: () => api.get<Household>('/households/me'),
@@ -170,25 +164,6 @@ export function BudgetsPage() {
     });
   }
 
-  // ── Nav ──────────────────────────────────────────────────────────────────
-
-  const navItems = [
-    { label: 'Dashboard', href: '/dashboard', active: false },
-    { label: 'Transactions', href: '/transactions', active: false },
-    { label: 'Accounts', href: '/accounts', active: false },
-    { label: 'Categories', href: '/categories', active: false },
-    { label: 'Budgets', href: '/budgets', active: true },
-    { label: 'Household', href: '/settings/household', active: false },
-    ...(me?.isSiteAdmin ? [{ label: 'Admin', href: '/admin', active: false }] : []),
-  ];
-
-  async function handleSignOut() {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (refreshToken) api.post('/auth/logout', { refreshToken }).catch(() => undefined);
-    clearTokens();
-    navigate('/login');
-  }
-
   const items = summaryQ.data?.items ?? [];
   const maxBudget = Math.max(1, ...items.map((i) => i.budgetMinor));
 
@@ -214,8 +189,7 @@ export function BudgetsPage() {
   }
 
   return (
-    <NavShell navItems={navItems} userEmail={me?.email ?? ''} onSignOut={handleSignOut}>
-      <div className="p-6 space-y-6 max-w-4xl">
+    <div className="p-6 space-y-6 max-w-4xl">
 
         {/* Header + period picker */}
         <div className="flex items-center justify-between flex-wrap gap-2">
@@ -355,7 +329,6 @@ export function BudgetsPage() {
         </div>
 
       </div>
-    </NavShell>
   );
 }
 
