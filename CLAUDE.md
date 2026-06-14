@@ -157,15 +157,15 @@ generated secrets + `AUTH_GATE=false`, starts Postgres, installs, migrates dev+t
   `docs/wireframes-phase1.html` and match the layout, element positions, labels, and interactions
   exactly. If the wireframe conflicts with a PRD requirement, raise the conflict — do not resolve it
   silently. Deviations require explicit sign-off.
+- **Never commit without explicit user approval.** After finishing a change, stop and tell the user
+  what was done. Wait for them to test and say "commit" (or similar) before running `git commit` or
+  `git push`. Do not preemptively commit even when typecheck and lint pass.
+- **Work directly on `main`.** This is a solo project with no other active developers. Do not create
+  `epic/*` or `story/*` branches — commit directly to `main` when the user approves.
 
 ## 7. Branching (see CONTRIBUTING.md)
 
-- `main` — protected, always green, releasable.
-- `epic/<n>-<name>` — long-lived, one per epic (e.g. `epic/2-accounts`).
-- `story/<id>-<slug>` — short-lived; PR into the epic branch (e.g. `story/E2.3-visibility`).
-
-Squash-merge story → epic; merge epic → `main` at wave boundaries. CI (lint + typecheck + tests) must
-pass and at least one review is required.
+*(Branching rules apply when the team grows. For now: work on `main` directly — see §6 above.)*
 
 ## 8. Build order (summary)
 

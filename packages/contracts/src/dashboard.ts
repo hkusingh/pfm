@@ -30,8 +30,10 @@ export type SpendingByCategoryResponse = z.infer<typeof SpendingByCategoryRespon
 // ─── E7.2 — Spending over time ────────────────────────────────────────────────
 
 export const SpendingOverTimeItemSchema = z.object({
-  month: z.string(),         // YYYY-MM
-  spendingMinor: z.number().int(),
+  month: z.string(),                      // YYYY-MM
+  spendingMinor: z.number().int(),        // regular (non-reserve, non-tax) expense spend
+  reserveSpendingMinor: z.number().int(), // annual/one-time payments (sinking-fund categories)
+  taxSpendingMinor: z.number().int(),     // categories whose name contains "tax"
   incomeMinor: z.number().int(),
 });
 export type SpendingOverTimeItem = z.infer<typeof SpendingOverTimeItemSchema>;

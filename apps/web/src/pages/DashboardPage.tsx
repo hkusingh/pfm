@@ -28,8 +28,21 @@ type SpendingByCategoryItem = {
 type SpendingOverTimeItem = {
   month: string;
   spendingMinor: number;
+  reserveSpendingMinor: number;
+  taxSpendingMinor: number;
   incomeMinor: number;
 };
+
+type BudgetItem = {
+  categoryId: string;
+  categoryName: string;
+  categoryColor: string | null;
+  budgetMinor: number;
+  spentMinor: number;
+  sinkingFundMinor: number;
+  children: BudgetItem[];
+};
+type BudgetSummaryData = { period: string; currency: string; items: BudgetItem[] };
 
 type Category = {
   id: string;
@@ -73,6 +86,11 @@ function monthLabel(yyyyMM: string): string {
 
 function currentMonthName(): string {
   return new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
+}
+
+function currentPeriod(): string {
+  const now = new Date();
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
 function prevMonthName(): string {
@@ -133,6 +151,12 @@ export function DashboardPage() {
   const categoriesQ = useQuery({
     queryKey: ['categories', hid],
     queryFn: () => api.get<Category[]>(`/households/${hid}/categories`),
+    enabled: !!hid,
+  });
+
+  const budgetQ = useQuery({
+    queryKey: ['budget-summary', hid, currentPeriod()],
+    queryFn: () => api.get<BudgetSummaryData>(`/households/${hid}/budgets?period=${currentPeriod()}`),
     enabled: !!hid,
   });
 
@@ -228,14 +252,46 @@ export function DashboardPage() {
     return result;
   }, [categoryQ.data, catMap, drill, groupedTopLevel]);
 
+  // Budget totals for KPI card and "Budget vs. actual" panel.
+  // "budgetedItems" = all categories with a budget (for KPI totals).
+  // "topSpendItems" = top 5 by actual spend this month (for the progress bar panel).
+  const budgetedItems = useMemo(() => {
+    return (budgetQ.data?.items ?? []).filter((i) => i.budgetMinor > 0);
+  }, [budgetQ.data]);
+
+  const topSpendItems = useMemo(() => {
+    return (budgetQ.data?.items ?? [])
+      .filter((i) => i.spentMinor > 0)
+      .sort((a, b) => b.spentMinor - a.spentMinor)
+      .slice(0, 5);
+  }, [budgetQ.data]);
+
+  const totalBudgetMinor = useMemo(
+    () => budgetedItems.reduce((s, i) => s + i.budgetMinor, 0),
+    [budgetedItems],
+  );
+  const totalSpentVsBudgetMinor = useMemo(
+    () => budgetedItems.reduce((s, i) => s + i.spentMinor, 0),
+    [budgetedItems],
+  );
+  const budgetLeftMinor = totalBudgetMinor - totalSpentVsBudgetMinor;
+
   // Bar chart data
   const barData = useMemo(
     () =>
       (trendQ.data ?? []).map((item) => ({
         name: monthLabel(item.month),
         spending: item.spendingMinor,
+        reserveSpending: item.reserveSpendingMinor,
+        taxSpending: item.taxSpendingMinor,
         income: item.incomeMinor,
       })),
+    [trendQ.data],
+  );
+
+  const TAX_THRESHOLD_MINOR = 10_000; // $100
+  const hasMaterialTax = useMemo(
+    () => (trendQ.data ?? []).some((item) => item.taxSpendingMinor >= TAX_THRESHOLD_MINOR),
     [trendQ.data],
   );
 
@@ -353,36 +409,31 @@ export function DashboardPage() {
           />
           <KpiCard
             label="Budget left"
-            value="—"
-            subtext="See Budgets"
-            loading={false}
-            color="gray"
+            value={totalBudgetMinor > 0 ? fmtMinor(budgetLeftMinor, currency) : '—'}
+            subtext={totalBudgetMinor > 0 ? `of ${fmtMinor(totalBudgetMinor, currency)}` : 'No budgets set'}
+            loading={budgetQ.isLoading}
+            color={budgetLeftMinor < 0 ? 'red' : budgetLeftMinor < totalBudgetMinor * 0.1 ? 'amber' : 'emerald'}
           />
         </div>
 
-        {/* Charts row — Spending Over Time LEFT, Spending by Category RIGHT */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Row 1 — Income vs. expenses (2/3) + Spending by category (1/3) */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-          {/* Spending over time — LEFT */}
-          <Card padding="none">
+          {/* Income vs. expenses — spans 2 columns */}
+          <Card padding="none" className="lg:col-span-2">
             <div className="px-5 pt-4 pb-2 flex items-center justify-between">
               <div>
-                <p className="text-sm font-semibold text-gray-900">Spending over time</p>
-                <p className="text-xs text-gray-400">Monthly income vs spending</p>
-              </div>
-              <div className="flex items-center gap-1 rounded-lg bg-gray-100 p-0.5">
-                <button
-                  onClick={() => setMonths(3)}
-                  className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors ${months === 3 ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  3M
-                </button>
-                <button
-                  onClick={() => setMonths(6)}
-                  className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors ${months === 6 ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  6M
-                </button>
+                <p className="text-sm font-semibold text-gray-900">Income vs. expenses</p>
+                <div className="flex items-center gap-3 mt-0.5">
+                  <span className="flex items-center gap-1 text-xs text-gray-400">
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: '#2F855A' }} />
+                    Income
+                  </span>
+                  <span className="flex items-center gap-1 text-xs text-gray-400">
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: '#2E6DA4' }} />
+                    Expenses
+                  </span>
+                </div>
               </div>
             </div>
             {trendQ.isLoading ? (
@@ -394,8 +445,8 @@ export function DashboardPage() {
                 <SpendBarChart
                   data={barData}
                   bars={[
-                    { key: 'income', label: 'Income', color: '#10b981' },
-                    { key: 'spending', label: 'Spending', color: '#f59e0b' },
+                    { key: 'income', label: 'Income', color: '#2F855A' },
+                    { key: 'spending', label: 'Expenses', color: '#2E6DA4' },
                   ]}
                   formatValue={fmtMinorShort}
                   height={260}
@@ -404,7 +455,7 @@ export function DashboardPage() {
             )}
           </Card>
 
-          {/* Spending by category — RIGHT */}
+          {/* Spending by category */}
           <Card padding="none">
             <div className="px-5 pt-4 pb-2">
               <div className="flex items-center gap-2">
@@ -437,6 +488,126 @@ export function DashboardPage() {
                 height={280}
                 onSliceClick={handleSliceClick}
               />
+            )}
+          </Card>
+
+        </div>
+
+        {/* Row 2 — Budget vs. actual (1/2) + Spending over time (1/2) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+          {/* Budget vs. actual */}
+          <Card padding="none">
+            <div className="px-5 pt-4 pb-3 flex items-center justify-between">
+              <p className="text-sm font-semibold text-gray-900">Budget vs. actual</p>
+              <a href="/budgets" className="text-xs text-blue-600 hover:underline">View budgets</a>
+            </div>
+            <div className="px-5 pb-5">
+              {budgetQ.isLoading ? (
+                <div className="h-40 flex items-center justify-center">
+                  <span className="text-sm text-gray-400">Loading…</span>
+                </div>
+              ) : topSpendItems.length === 0 ? (
+                <div className="h-40 flex flex-col items-center justify-center gap-2">
+                  <span className="text-sm text-gray-400">No spending this month</span>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {topSpendItems.map((item) => {
+                    const ratio = item.budgetMinor > 0 ? item.spentMinor / item.budgetMinor : 0;
+                    const hasBudget = item.budgetMinor > 0;
+                    const fillColor =
+                      !hasBudget ? '#9ca3af' :
+                      ratio > 1 ? '#ef4444' :
+                      ratio >= 0.8 ? '#f59e0b' :
+                      '#2E6DA4';
+                    const pct = hasBudget ? Math.min(100, Math.round(ratio * 100)) : 100;
+                    return (
+                      <div key={item.categoryId}>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span
+                              className="w-2 h-2 rounded-full flex-shrink-0"
+                              style={{ background: item.categoryColor ?? '#A0AEC0' }}
+                            />
+                            <span className="text-xs font-medium text-gray-700 truncate">{item.categoryName}</span>
+                          </div>
+                          <span className="text-xs tabular-nums text-gray-500 flex-shrink-0 ml-2">
+                            {fmtMinor(item.spentMinor, currency)}
+                            {hasBudget && <> / {fmtMinor(item.budgetMinor, currency)}</>}
+                          </span>
+                        </div>
+                        <div className="h-2 w-full bg-gray-100 overflow-hidden">
+                          <div
+                            className="h-full transition-all"
+                            style={{ width: `${pct}%`, background: fillColor }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <a href="/budgets" className="block text-xs text-gray-400 hover:text-blue-600 hover:underline pt-1">
+                    View all budgets →
+                  </a>
+                </div>
+              )}
+            </div>
+          </Card>
+
+          {/* Spending over time */}
+          <Card padding="none">
+            <div className="px-5 pt-4 pb-2 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-gray-900">Spending over time</p>
+                <span className="flex items-center gap-3 mt-0.5 text-xs text-gray-400 flex-wrap">
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: '#2E6DA4' }} />
+                    Spending
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: '#B9770E' }} />
+                    Annual expense (from reserve)
+                  </span>
+                  {hasMaterialTax && (
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: '#8e44ad' }} />
+                      Taxes
+                    </span>
+                  )}
+                </span>
+              </div>
+              <div className="flex items-center gap-1 rounded-lg bg-gray-100 p-0.5">
+                <button
+                  onClick={() => setMonths(3)}
+                  className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors ${months === 3 ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  3M
+                </button>
+                <button
+                  onClick={() => setMonths(6)}
+                  className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors ${months === 6 ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  6M
+                </button>
+              </div>
+            </div>
+            {trendQ.isLoading ? (
+              <div className="h-48 flex items-center justify-center">
+                <span className="text-sm text-gray-400">Loading…</span>
+              </div>
+            ) : (
+              <div className="px-2 pb-4">
+                <SpendBarChart
+                  data={barData}
+                  bars={[
+                    { key: 'spending', label: 'Spending', color: '#2E6DA4', stackId: 'spend' },
+                    { key: 'reserveSpending', label: 'Annual expense (from reserve)', color: '#B9770E', stackId: 'spend' },
+                    ...(hasMaterialTax ? [{ key: 'taxSpending', label: 'Taxes', color: '#8e44ad', stackId: 'spend' }] : []),
+                  ]}
+                  formatValue={fmtMinorShort}
+                  height={220}
+                />
+              </div>
             )}
           </Card>
 

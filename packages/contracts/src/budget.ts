@@ -26,9 +26,15 @@ export const BudgetResponseSchema = z.object({
 });
 export type BudgetResponse = z.infer<typeof BudgetResponseSchema>;
 
+export const DEFAULT_BUDGET_PERIOD = '__default__';
+
 export const UpsertBudgetBodySchema = z.object({
   categoryId: z.string(),
-  period: z.string().regex(PERIOD_RE, 'period must be YYYY-MM'),
+  // YYYY-MM for a month-specific override, or '__default__' for the template applied to all months.
+  period: z.string().refine(
+    (v) => PERIOD_RE.test(v) || v === DEFAULT_BUDGET_PERIOD,
+    'period must be YYYY-MM or __default__',
+  ),
   amountMinor: z.number().int().min(0),
 });
 export type UpsertBudgetBody = z.infer<typeof UpsertBudgetBodySchema>;
@@ -41,7 +47,14 @@ export interface BudgetSummaryItem {
   categoryColor: string | null;
   parentId: string | null;
   kind: 'expense' | 'income' | 'transfer';
+  /** ID of the month-specific override record for the requested period, if one exists. */
   budgetId: string | null;
+  /** ID of the __default__ template record, if one exists. */
+  defaultBudgetId: string | null;
+  /** Raw amount from the __default__ record (0 when no default is set). */
+  defaultBudgetAmountMinor: number;
+  /** True when there is a period-specific override (budgetId != null). */
+  hasMonthOverride: boolean;
   budgetMinor: number;
   sinkingFundMinor: number;
   spentMinor: number;
@@ -57,6 +70,9 @@ export const BudgetSummaryItemSchema: z.ZodType<BudgetSummaryItem> = z.lazy(() =
     parentId: z.string().nullable(),
     kind: z.enum(['expense', 'income', 'transfer']),
     budgetId: z.string().nullable(),
+    defaultBudgetId: z.string().nullable(),
+    defaultBudgetAmountMinor: z.number().int(),
+    hasMonthOverride: z.boolean(),
     budgetMinor: z.number().int(),
     sinkingFundMinor: z.number().int(),
     spentMinor: z.number().int(),

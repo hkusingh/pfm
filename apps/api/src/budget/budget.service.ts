@@ -11,6 +11,7 @@ import type {
   UpdateSinkingFundBody,
   IncomeSummaryResponse,
 } from '@pfm/contracts';
+import { DEFAULT_BUDGET_PERIOD } from '@pfm/contracts';
 
 const PERIOD_RE = /^\d{4}-\d{2}$/;
 
@@ -21,7 +22,7 @@ function currentPeriod(): string {
 
 // [start, end) date range covering the given YYYY-MM period.
 function periodRange(period: string): { start: Date; end: Date } {
-  if (!PERIOD_RE.test(period)) throw new BadRequestException('period must be YYYY-MM');
+  if (!PERIOD_RE.test(period)) throw new BadRequestException('period must be YYYY-MM (not __default__)');
   const [y, m] = period.split('-').map(Number);
   const start = new Date(Date.UTC(y, m - 1, 1));
   const end = new Date(Date.UTC(y, m, 1));
@@ -63,20 +64,27 @@ export class BudgetService {
     viewerUserId: string,
     period: string | undefined,
   ): Promise<BudgetSummaryResponse> {
+    // '__default__' is used by the manage-budget page to fetch default amounts only.
+    // Fall back to current period for transaction date range in that case (no spend needed).
     const resolvedPeriod = period ?? currentPeriod();
-    const { start, end } = periodRange(resolvedPeriod);
+    const spendPeriod = resolvedPeriod === DEFAULT_BUDGET_PERIOD ? currentPeriod() : resolvedPeriod;
+    const { start, end } = periodRange(spendPeriod);
 
     const [household, accountIds] = await Promise.all([
       prisma.household.findUniqueOrThrow({ where: { id: householdId }, select: { baseCurrency: true } }),
       this.getVisibleAccountIds(householdId, viewerUserId),
     ]);
 
-    const [categories, budgets, sinkingFunds, transactions] = await Promise.all([
+    const [categories, periodBudgets, defaultBudgets, sinkingFunds, transactions] = await Promise.all([
       prisma.category.findMany({
         where: { householdId, kind: 'expense' },
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
       }),
-      prisma.budget.findMany({ where: { householdId, period: resolvedPeriod } }),
+      // No period-specific overrides when querying the default template itself.
+      resolvedPeriod === DEFAULT_BUDGET_PERIOD
+        ? Promise.resolve([])
+        : prisma.budget.findMany({ where: { householdId, period: resolvedPeriod } }),
+      prisma.budget.findMany({ where: { householdId, period: DEFAULT_BUDGET_PERIOD } }),
       prisma.sinkingFund.findMany({ where: { householdId } }),
       accountIds.length > 0
         ? prisma.transaction.findMany({
@@ -115,7 +123,9 @@ export class BudgetService {
       sinkingFundByCategory.set(fund.categoryId, (sinkingFundByCategory.get(fund.categoryId) ?? 0) + monthly);
     }
 
-    const budgetByCategory = new Map(budgets.map((b) => [b.categoryId, b]));
+    // Period-specific overrides take precedence over the default template.
+    const overrideByCategory = new Map(periodBudgets.map((b) => [b.categoryId, b]));
+    const defaultByCategory = new Map(defaultBudgets.map((b) => [b.categoryId, b]));
 
     const childrenByParent = new Map<string, typeof categories>();
     for (const c of categories) {
@@ -126,12 +136,17 @@ export class BudgetService {
     }
 
     const buildItem = (cat: (typeof categories)[number]): BudgetSummaryItem => {
-      const ownBudget = budgetByCategory.get(cat.id);
+      const overrideBudget = overrideByCategory.get(cat.id);
+      const defaultBudget = defaultByCategory.get(cat.id);
+      const effectiveBudget = overrideBudget ?? defaultBudget;
+
       const sinkingFundMinor = sinkingFundByCategory.get(cat.id) ?? 0;
       const ownSpent = spentByCategory.get(cat.id) ?? 0;
+
+      // Return all children so the UI can show every subcategory for budgeting.
       const children = (childrenByParent.get(cat.id) ?? []).map(buildItem);
 
-      const ownBudgetMinor = (ownBudget?.amountMinor ?? 0) + sinkingFundMinor;
+      const ownBudgetMinor = (effectiveBudget?.amountMinor ?? 0) + sinkingFundMinor;
       const budgetMinor = ownBudgetMinor + children.reduce((s, c) => s + c.budgetMinor, 0);
       const spentMinor = ownSpent + children.reduce((s, c) => s + c.spentMinor, 0);
 
@@ -141,7 +156,10 @@ export class BudgetService {
         categoryColor: cat.color,
         parentId: cat.parentId,
         kind: cat.kind as 'expense' | 'income' | 'transfer',
-        budgetId: ownBudget?.id ?? null,
+        budgetId: overrideBudget?.id ?? null,
+        defaultBudgetId: defaultBudget?.id ?? null,
+        defaultBudgetAmountMinor: defaultBudget?.amountMinor ?? 0,
+        hasMonthOverride: overrideBudget != null,
         budgetMinor,
         sinkingFundMinor,
         spentMinor,
@@ -150,6 +168,8 @@ export class BudgetService {
       };
     };
 
+    // Return all top-level expense categories so users can set budgets on any of them.
+    // The UI sorts active ones first and paginates; inactive children are still filtered.
     const items = categories.filter((c) => !c.parentId).map(buildItem);
 
     return { period: resolvedPeriod, currency: household.baseCurrency, items };
@@ -319,13 +339,16 @@ export class BudgetService {
 
     const budgetByCategory = new Map(budgets.map((b) => [b.categoryId, b.amountMinor]));
 
-    const items = categories.map((cat) => ({
-      categoryId: cat.id,
-      categoryName: cat.name,
-      categoryColor: cat.color,
-      expectedMinor: budgetByCategory.get(cat.id) ?? 0,
-      receivedMinor: receivedByCategory.get(cat.id) ?? 0,
-    }));
+    // Only include income categories where income has actually been received this period.
+    const items = categories
+      .map((cat) => ({
+        categoryId: cat.id,
+        categoryName: cat.name,
+        categoryColor: cat.color,
+        expectedMinor: budgetByCategory.get(cat.id) ?? 0,
+        receivedMinor: receivedByCategory.get(cat.id) ?? 0,
+      }))
+      .filter((i) => i.receivedMinor > 0);
 
     return { period: resolvedPeriod, currency: household.baseCurrency, items };
   }

@@ -44,12 +44,13 @@ interface BarData {
 
 interface SpendBarChartProps {
   data: BarData[];
-  bars: { key: string; label: string; color?: string }[];
+  bars: { key: string; label: string; color?: string; stackId?: string }[];
   formatValue?: (v: number) => string;
   height?: number;
+  barRadius?: number | [number, number, number, number];
 }
 
-export function SpendBarChart({ data, bars, formatValue, height = 300 }: SpendBarChartProps) {
+export function SpendBarChart({ data, bars, formatValue, height = 300, barRadius = 0 }: SpendBarChartProps) {
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
@@ -59,7 +60,7 @@ export function SpendBarChart({ data, bars, formatValue, height = 300 }: SpendBa
         <Tooltip content={(props) => <ChartTooltip {...(props as TooltipProps<number, string>)} formatValue={formatValue} />} />
         <Legend wrapperStyle={{ fontSize: 12 }} />
         {bars.map((bar, i) => (
-          <Bar key={bar.key} dataKey={bar.key} name={bar.label} fill={bar.color ?? chart.palette[i % chart.palette.length]} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+          <Bar key={bar.key} dataKey={bar.key} name={bar.label} fill={bar.color ?? chart.palette[i % chart.palette.length]} radius={barRadius} isAnimationActive={false} stackId={bar.stackId} />
         ))}
       </BarChart>
     </ResponsiveContainer>

@@ -200,25 +200,57 @@ export class DashboardService {
     const now = new Date();
     const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1), 1));
 
+    // Categories with a sinking fund → amber "annual expense" bar.
+    // Categories whose name contains "tax" (case-insensitive) → purple "taxes" bar.
+    const [sinkingFunds, taxCategories] = await Promise.all([
+      prisma.sinkingFund.findMany({ where: { householdId }, select: { categoryId: true } }),
+      prisma.category.findMany({
+        where: { householdId, name: { contains: 'tax', mode: 'insensitive' } },
+        select: { id: true },
+      }),
+    ]);
+    const reserveCategoryIds = new Set(sinkingFunds.map((f) => f.categoryId));
+    const taxCategoryIds = new Set(taxCategories.map((c) => c.id));
+
     const rows = await prisma.transaction.findMany({
       where: {
         accountId: { in: accountIds },
         postedDate: { gte: from },
         isExcluded: false,
       },
-      select: { amountMinor: true, postedDate: true, category: { select: { kind: true } } },
+      select: {
+        amountMinor: true,
+        postedDate: true,
+        categoryId: true,
+        hasSplit: true,
+        category: { select: { kind: true } },
+        splits: { select: { amountMinor: true, categoryId: true, category: { select: { kind: true } } } },
+      },
     });
 
     const bucketMap = new Map(buckets.map((b) => [b.month, b]));
 
     for (const tx of rows) {
-      if (tx.category?.kind === 'transfer') continue;
       const monthKey = `${tx.postedDate.getUTCFullYear()}-${String(tx.postedDate.getUTCMonth() + 1).padStart(2, '0')}`;
       const bucket = bucketMap.get(monthKey);
       if (!bucket) continue;
 
-      if (tx.amountMinor > 0) bucket.incomeMinor += tx.amountMinor;
-      else bucket.spendingMinor += Math.abs(tx.amountMinor);
+      const items = tx.hasSplit
+        ? tx.splits.map((s) => ({ amountMinor: s.amountMinor, categoryId: s.categoryId, kind: s.category?.kind ?? null }))
+        : [{ amountMinor: tx.amountMinor, categoryId: tx.categoryId, kind: tx.category?.kind ?? null }];
+
+      for (const item of items) {
+        if (item.kind === 'transfer') continue;
+        if (item.amountMinor > 0) {
+          bucket.incomeMinor += item.amountMinor;
+        } else if (item.categoryId && taxCategoryIds.has(item.categoryId)) {
+          bucket.taxSpendingMinor += Math.abs(item.amountMinor);
+        } else if (item.categoryId && reserveCategoryIds.has(item.categoryId)) {
+          bucket.reserveSpendingMinor += Math.abs(item.amountMinor);
+        } else {
+          bucket.spendingMinor += Math.abs(item.amountMinor);
+        }
+      }
     }
 
     return buckets;
@@ -232,6 +264,8 @@ export class DashboardService {
       return {
         month: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`,
         spendingMinor: 0,
+        reserveSpendingMinor: 0,
+        taxSpendingMinor: 0,
         incomeMinor: 0,
       };
     });
