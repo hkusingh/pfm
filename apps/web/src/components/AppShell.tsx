@@ -45,6 +45,7 @@ export function AppShell() {
     { label: 'Accounts', href: '/accounts', active: pathname === '/accounts' },
     { label: 'Categories', href: '/categories', active: pathname === '/categories' },
     { label: 'Budgets', href: '/budgets', active: pathname === '/budgets' },
+    { label: 'Reports', href: '/reports', active: pathname === '/reports' },
     { label: 'Household', href: '/settings/household', active: pathname === '/settings/household' },
     ...(me?.isSiteAdmin
       ? [{ label: 'Admin', href: '/admin/invites', active: pathname.startsWith('/admin') }]

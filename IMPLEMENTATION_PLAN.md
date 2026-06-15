@@ -56,20 +56,36 @@ acceptance bar for each.
 - **Epic 7 — Dashboard & Reports** ✅ (E7.1–E7.2) — KPI cards, Spending by Category donut, Spending
   Over Time bar chart, household/personal toggle, Dashboard→Transactions drill-through. Merged to `main`.
 
-**Build right now (Wave 5 — Epic 10):**
+**Done (Wave 5 — Epic 10 ✅):**
 
-**Epic 10 — Dashboard & Transaction UX Polish** (branch: `epic/10-dashboard-transactions-ux`):
-- **E10.1** User profile (`User.displayName`) + minimal Settings page + NavShell avatar badge.
-- **E10.2** Dashboard wireframe alignment — chart positions, KPI trend arrows, top-4+Other donut with multi-level Other drill-down, fix uncategorized transactions in Spending Over Time.
+**Epic 10 — Dashboard & Transaction UX Polish** ✅ merged to `main` 2026-06-14:
+- **E10.1** User profile (`User.displayName`) + minimal Settings page + NavShell household name/member count/gear icon.
+- **E10.2** Dashboard wireframe alignment — stacked spending-over-time bar (regular/reserve/tax), budget vs actual top-5-by-spend, flat bar edges.
 - **E10.3** Transaction filter UX — default Month-to-Date, MTD/YTD quick filters, hierarchical category picker, monetary sum bar, `categoryIds` URL param support.
 - **E10.4** Uncategorized badge on Transactions nav item.
-- **E10.5** Transaction exclusion flag (`isExcluded`) — exclude from all financial aggregations; toggle in recategorize panel; audit record.
+- **E10.5** Transaction exclusion flag (`isExcluded`) — exclude from all financial aggregations; toggle in recategorize panel.
 
-**After Epic 10:**
+**Build right now (Wave 6 — Epics 12 + 13, parallel):**
+
+**Epic 12 — Full Settings page** (complete wireframe screen "8 · Settings"):
+- **E12.1** Profile card — email display (read-only) + optional DOB field (`User.dob?` migration).
+- **E12.2** Login & security — `PATCH /auth/password` (verify current, hash new, revoke sessions).
+- **E12.3** Two-factor auth management card — list enrolled methods from `GET /auth/me`, manage / re-enroll flows, recovery-code regeneration.
+- **E12.4** Preferences & data card — base currency + month-start-day (editable, via `PATCH /households/:id`), Export data button, Delete account with email confirmation.
+
+**Epic 13 — Reports page** (wireframe screen "10 · Reports"):
+- **E13.1** DB: `SavedChart` model + migration; contracts (`reports.ts`).
+- **E13.2** API: `ReportsModule` — spending-by-category-over-time, period-comparison, top-merchants, net-worth-trend, saved-charts CRUD.
+- **E13.3** UI: `/reports` page — controls bar, featured stacked/line chart, period comparison table, report library (5 mini-charts), custom chart builder.
+- **E13.4** Save to dashboard — saved charts appear in new row on main Dashboard; × to remove.
+- **E13.6** Category picker — gear icon on featured chart opens a popover to choose which top-level categories appear as named bars (rest → "Other"); persisted in `localStorage`.
+
+**After Wave 6:**
 1. **Smarter auto-classify** — multi-signal scoring (word overlap ratio + character similarity +
    `merchantRuleKey` prefix) with a configurable match threshold, replacing the current
    exact/substring approach. Prerequisite for reliable bulk classification before Epic 9 AI arrives.
 2. **Epic 9 — BYOK AI Categorization** (E9.1–E9.4) — depends on E3 ✅, E4 ✅.
+3. **Epic 11 — Rental Investment Tracking** — account segments (personal/rental/business), conditional Rental nav.
 
 **Deployment posture:** **local-first.** Develop and validate on your machine with seed/real data. Do
 **not** stand up a persistent hosted environment yet — see §5.2 for the local-first → smoke-deploy →

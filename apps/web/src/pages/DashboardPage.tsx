@@ -1,11 +1,25 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { Card, DonutChart, SpendBarChart } from '@pfm/ui';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Card, DonutChart, SpendBarChart, TrendLineChart } from '@pfm/ui';
 import { api } from '../lib/api';
 
 type Me = { id: string; email: string; name: string; isSiteAdmin: boolean };
 type Household = { id: string; name: string };
+
+type ReportKey = 'net_worth_trend' | 'income_vs_expenses' | 'cash_flow' | 'spending_by_category';
+
+type SavedChartItem = {
+  id: string;
+  name: string;
+  chartType: string;
+  measure: string;
+  groupBy: string;
+  dateRange: string;
+  view: string;
+  reportKey: ReportKey | null;
+  isShared: boolean;
+};
 
 type DashboardSummary = {
   netWorthMinor: number;
@@ -158,6 +172,18 @@ export function DashboardPage() {
     queryKey: ['budget-summary', hid, currentPeriod()],
     queryFn: () => api.get<BudgetSummaryData>(`/households/${hid}/budgets?period=${currentPeriod()}`),
     enabled: !!hid,
+  });
+
+  const savedChartsQ = useQuery({
+    queryKey: ['saved-charts', hid],
+    queryFn: () => api.get<{ charts: SavedChartItem[] }>(`/households/${hid}/reports/saved-charts`),
+    enabled: !!hid,
+  });
+
+  const qc = useQueryClient();
+  const deleteChart = useMutation({
+    mutationFn: (chartId: string) => api.delete(`/households/${hid}/reports/saved-charts/${chartId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['saved-charts', hid] }),
   });
 
   const summary = summaryQ.data;
@@ -613,8 +639,121 @@ export function DashboardPage() {
 
         </div>
 
+        {/* Saved charts */}
+        {(savedChartsQ.data?.charts.length ?? 0) > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-base font-semibold text-gray-900">Saved charts</h2>
+              <a href="/reports" className="text-xs text-blue-600 hover:underline">Add more</a>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {savedChartsQ.data!.charts.map((chart) => (
+                <Card key={chart.id} padding="none">
+                  <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+                    <p className="text-sm font-semibold text-gray-900">{chart.name}</p>
+                    <button
+                      className="text-gray-300 hover:text-red-400 text-lg leading-none transition-colors"
+                      title="Remove from dashboard"
+                      onClick={() => deleteChart.mutate(chart.id)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="px-3 pb-4">
+                    <SavedChartRenderer householdId={hid!} chart={chart} />
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
       </div>
   );
+}
+
+// ─── Saved chart renderer ─────────────────────────────────────────────────────
+
+type NetWorthPoint = { month: string; netWorthMinor: number };
+type SpendByCatCategory = { categoryId: string; name: string; color: string | null; amounts: number[] };
+type SpendByCatData = { months: string[]; categories: SpendByCatCategory[] };
+
+function savedChartMonths(dr: string): number {
+  return dr === '3m' ? 3 : dr === '6m' ? 6 : dr === 'ytd' ? new Date().getMonth() + 1 : 12;
+}
+
+function fmtShort(dollars: number): string {
+  const v = Math.abs(dollars);
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}k`;
+  return `$${Math.round(v)}`;
+}
+
+function monthLabelShort(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  return new Date(y, m - 1).toLocaleString('default', { month: 'short', year: '2-digit' });
+}
+
+function SavedChartRenderer({ householdId, chart }: { householdId: string; chart: SavedChartItem }) {
+  const months = savedChartMonths(chart.dateRange);
+
+  const netWorthQ = useQuery({
+    queryKey: ['saved-chart-nw', householdId, months],
+    queryFn: () => api.get<{ points: NetWorthPoint[] }>(`/households/${householdId}/reports/net-worth-trend?months=${months}`),
+    enabled: chart.reportKey === 'net_worth_trend',
+  });
+
+  const spendingQ = useQuery({
+    queryKey: ['saved-chart-spending', householdId, months, chart.view],
+    queryFn: () => api.get<SpendingOverTimeItem[]>(`/households/${householdId}/dashboard/spending-over-time?months=${months}&view=${chart.view}`),
+    enabled: chart.reportKey === 'income_vs_expenses' || chart.reportKey === 'cash_flow',
+  });
+
+  const catQ = useQuery({
+    queryKey: ['saved-chart-cat', householdId, months, chart.view],
+    queryFn: () => api.get<SpendByCatData>(`/households/${householdId}/reports/spending-by-category-over-time?months=${months}&view=${chart.view}`),
+    enabled: chart.reportKey === 'spending_by_category',
+  });
+
+  if (chart.reportKey === 'net_worth_trend') {
+    const lineData = (netWorthQ.data?.points ?? []).map((p) => ({
+      name: monthLabelShort(p.month),
+      netWorth: p.netWorthMinor / 100,
+    }));
+    return <TrendLineChart data={lineData} lines={[{ key: 'netWorth', label: 'Net worth', color: '#2E6DA4' }]} formatValue={fmtShort} height={130} showLegend={false} />;
+  }
+
+  if (chart.reportKey === 'income_vs_expenses') {
+    const barData = (spendingQ.data ?? []).map((item) => ({
+      name: monthLabelShort(item.month),
+      income: item.incomeMinor / 100,
+      spending: (item.spendingMinor + item.reserveSpendingMinor + item.taxSpendingMinor) / 100,
+    }));
+    return <SpendBarChart data={barData} bars={[{ key: 'income', label: 'Income', color: '#2F855A' }, { key: 'spending', label: 'Spending', color: '#E07B2C' }]} formatValue={fmtShort} height={130} showLegend={false} />;
+  }
+
+  if (chart.reportKey === 'cash_flow') {
+    const barData = (spendingQ.data ?? []).map((item) => ({
+      name: monthLabelShort(item.month),
+      cashFlow: (item.incomeMinor - item.spendingMinor - item.reserveSpendingMinor - item.taxSpendingMinor) / 100,
+    }));
+    return <SpendBarChart data={barData} bars={[{ key: 'cashFlow', label: 'Cash flow', colorByValue: (v) => v < 0 ? '#e53e3e' : '#16a085' }]} formatValue={fmtShort} height={130} showLegend={false} />;
+  }
+
+  if (chart.reportKey === 'spending_by_category') {
+    const PALETTE = ['#2E6DA4', '#E07B2C', '#2F855A', '#8e44ad', '#9CA3AF'];
+    const cats = catQ.data?.categories ?? [];
+    const mLabels = (catQ.data?.months ?? []).map(monthLabelShort);
+    const barData = mLabels.map((name, mi) => {
+      const entry: { name: string } & Record<string, string | number> = { name };
+      cats.forEach((c) => { entry[c.name] = c.amounts[mi] / 100; });
+      return entry;
+    });
+    const bars = cats.map((c, i) => ({ key: c.name, label: c.name, color: c.categoryId === '__other__' ? '#9CA3AF' : PALETTE[i % (PALETTE.length - 1)] }));
+    return <SpendBarChart data={barData} bars={bars} formatValue={fmtShort} height={130} showLegend={false} />;
+  }
+
+  return <p className="text-xs text-gray-400 text-center py-4"><a href="/reports" className="text-blue-500 hover:underline">Open in Reports →</a></p>;
 }
 
 // ─── KPI card ─────────────────────────────────────────────────────────────────

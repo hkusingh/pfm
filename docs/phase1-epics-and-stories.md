@@ -28,6 +28,7 @@ flowchart TD
   E8[Epic 8 — Platform Access ✅]:::done
   E10[Epic 10 — UX Polish ✅]:::done
   E12[Epic 12 — Settings Page]:::b
+  E13[Epic 13 — Reports Page]:::b
 
   E0 --> E1
   E0 --> E2
@@ -41,6 +42,8 @@ flowchart TD
   E7 --> E10
   E5 --> E10
   E10 --> E12
+  E7 --> E13
+  E5 --> E13
   classDef k fill:#1F4E79,color:#fff,stroke:#1F4E79;
   classDef done fill:#d1fae5,stroke:#059669,color:#064e3b;
   classDef b fill:#fbf1df,stroke:#B9770E,color:#1c2530;
@@ -56,7 +59,8 @@ flowchart TD
 | **Wave 3** | Epic 3 ✅, Epic 5 ✅, Epic 6 ✅ | Merged to `main`. Epic 9 (BYOK AI) deferred. |
 | **Wave 4** | Epic 7 ✅ | Dashboard + reports. Merged to `main`. |
 | **Wave 5** | Epic 10 ✅ | UX Polish — all stories done, merged to `main` 2026-06-13. |
-| **Wave 6** | **Epic 11** *(planned)*, **Epic 12** *(planned)* | Rental Investment Tracking + full Settings page (parallel). |
+| **Wave 6** | **Epic 12** *(active)*, **Epic 13** *(active)* | Full Settings page + Reports page (parallel). |
+| **Wave 7** | **Epic 11** *(planned)*, **Epic 9** *(planned)* | Rental Investment Tracking + BYOK AI Categorization. |
 
 > **Phase 1 scope note:** Phase 1 is a **limited-user test release** and is **invitation-only** (Epic 8). Data enters via **document/statement upload (Epic 3) and manual entry (Epic 2) only**. **Plaid live aggregation is deferred to Phase 2** — its stories are listed under Epic 2 as Phase 2 for forward planning, not Phase 1 work. A thin **BYOK AI categorization** slice (Epic 9) is included in Phase 1: households may supply their own LLM provider key; AI is always optional. The broader AI insights platform remains Phase 2.
 
@@ -345,63 +349,140 @@ flowchart TD
 
 ---
 
-## 9e. Epic 12 — User Account Settings (full `/settings` page)  *(added 2026-06-13)*
+## 9e. Epic 12 — User Account Settings (full `/settings` page)  *(Wave 6 — active)*
 
-**Goal:** complete the `/settings` page to match wireframe screen "8 · Settings" exactly. Epic 10 shipped a minimal Profile section (display name only). This Epic adds the remaining three functional cards — Login & security, Two-factor authentication management, and Preferences & data — so the page is fully featured. The AI categorization card is covered by Epic 9 and is out of scope here. **Depends on:** E0 ✅, E10 ✅. **Wave 6 (parallel with Epic 11).**
+**Goal:** complete `/settings` to exactly match wireframe screen "8 · Settings". Epic 10 shipped name-only profile. This epic adds the three remaining functional cards and makes the page fully wire-frame compliant. AI categorization card is Epic 9 scope, shown as a placeholder here. **Depends on:** E0 ✅, E10 ✅.
 
-### Wireframe: what the full page looks like
-
-Four cards in a 2-column grid, plus an AI card spanning full width (Epic 9):
-
+**Layout (2-column grid, then full-width):**
 ```
 ┌──────────────────────────┬──────────────────────────┐
 │  Profile                 │  Login & security        │
-│  Full name               │  Current password        │
-│  Email (re-verify note)  │  New password            │
-│  Date of birth (opt.)    │  Confirm new password    │
-│  [Save profile]          │  [Update password]       │
 ├──────────────────────────┼──────────────────────────┤
 │  Two-factor auth         │  Preferences & data      │
-│  • TOTP — Primary        │  Export my data          │
-│  • Email — Backup        │  Delete account          │
-│  [View recovery codes]   │                          │
-│  Note: MFA always on     │                          │
 └──────────────────────────┴──────────────────────────┘
 ┌──────────────────────────────────────────────────────┐
-│  AI categorization (optional · BYOK) — Epic 9        │
+│  AI categorization — placeholder (Epic 9)            │
 └──────────────────────────────────────────────────────┘
 ```
 
+- **E12.1 — Profile card.** *(Size: S)*
+  - Full name input (existing). Email shown read-only (no change-email flow in Phase 1 — complex re-verification; defer). Optional DOB field: add `dob DateTime?` to `User` schema (non-breaking migration); surface in profile form + `GET /auth/me` + `PATCH /auth/profile`.
+  - AC: Save updates name and/or DOB. Email is display-only.
+
+- **E12.2 — Login & security card.** *(Size: S)*
+  - New API: `PATCH /auth/password` — body `{ currentPassword, newPassword (min 12) }`. Service: `argon2.verify` current, update hash, revoke all sessions except current (forces re-login on other devices).
+  - UI: Current password + New password + Confirm new password + Update password button.
+  - AC: Wrong current → 401 error shown. Mismatch → client-side error. Success → banner, stays logged in.
+
+- **E12.3 — Two-factor auth card.** *(Size: M)*
+  - Reads `mfaMethods[]` from `GET /auth/me` (already returned by service; contract needs update to expose it).
+  - Shows each confirmed method: icon, label (Google Authenticator / Email code), badge (Active · Primary / Backup), date added. "Manage" button links to existing `/mfa/setup` flow for re-enrollment.
+  - "View recovery codes" button: adds `POST /mfa/recovery-codes/regenerate` endpoint — requires current password re-confirmation, invalidates old codes, returns 10 new plaintext codes (shown once). Modal displays codes with copy-all button.
+  - Note at bottom: "MFA is required and can't be turned off — only the method can be changed."
+  - AC: At least one method always active. Regenerating codes writes audit record.
+
+- **E12.4 — Preferences & data card.** *(Size: S)*
+  - **Base currency** selector (USD/EUR/GBP/INR) and **Month starts on** selector (1–28, shown as 1st / 15th / etc.) — both editable, call `PATCH /households/:id` on save. Matches wireframe exactly (not read-only).
+  - **Export my data** — calls `GET /user/export` (already exists), downloads JSON.
+  - **Delete account** — danger button; confirm dialog requires user to type their email; calls `DELETE /user` (already exists). Blocked with message if user is sole household owner.
+  - AC: Currency/month-start changes require owner role; show error if member tries. Export downloads within 5 s. Delete immediately revokes access.
+
 ---
 
-- **E12.1 — Profile completion.** *(Size: S)*
-  - Extend `User` model: add `email` change flow and `dateOfBirth Date?` (optional, not collected at signup).
-  - Profile card shows **Full name** (maps to `displayName`), **Email** (current value read-only with "Change" button that triggers re-verification flow), and **Date of birth** (optional date picker).
-  - Email change: user enters new email → server sends verification link to new address → on click, email updated and old address notified. Until verified, old email remains active. New API: `POST /auth/change-email`.
-  - Date of birth stored on `User`; returned in `GET /auth/me`; never exposed to other household members.
-  - AC: Save profile updates name and/or DOB. Email change initiates re-verification, not immediate swap.
+## 9f. Epic 13 — Reports page  *(Wave 6 — active)*
 
-- **E12.2 — Change password.** *(Size: S)*
-  - Login & security card: Current password + New password + Confirm new password fields.
-  - New API: `POST /auth/change-password` — validates current password (argon2 verify), enforces minimum strength, updates hash, invalidates all existing refresh tokens (forces re-login on other devices).
-  - AC: Wrong current password → clear error. New passwords don't match → inline error. Success → confirmation banner; user stays logged in on the current device.
+**Goal:** build `/reports` matching wireframe screen "10 · Reports" — an explorable chart gallery with interactive controls, a featured spending chart, period comparison, a report library of 5 mini-charts, a custom chart builder, and the ability to save any chart to the main Dashboard. **Depends on:** E5 ✅, E7 ✅.
 
-- **E12.3 — MFA method management.** *(Size: M)*
-  - Two-factor authentication card shows enrolled methods with Primary / Backup labels and date added.
-  - **Manage TOTP:** re-enroll (generates new QR, requires confirming a code before replacing the old secret); remove only allowed if another method is active.
-  - **Manage email backup:** toggle email-code backup on/off (email is the account email; no separate entry needed).
-  - **View recovery codes:** shows the existing codes behind a password re-confirmation prompt; button to regenerate (invalidates old set, shows new set once).
-  - AC: At least one method must remain active at all times — UI prevents removing the last method.
-  - AC: Changing/removing an MFA method writes an audit record.
-  - Note: MFA cannot be disabled entirely (guardrail 3); this screen only lets users switch methods.
+**What's explicitly out of scope:** "Spending by member" mini-chart (no member-level account tagging yet). Custom chart builder "Build a custom chart" placeholder card in the library is replaced by the full builder section below it.
 
-- **E12.4 — Preferences & data.** *(Size: M)*
-  - Preferences & data card:
-    - **Export my data** — triggers `GET /households/{id}/export` (already implemented in Epic 0 privacy endpoints); button downloads the JSON/CSV bundle.
-    - **Delete account** — danger button; requires password re-confirmation modal; soft-deletes the `User` record, removes from household membership, sends confirmation email. If user is the sole primary owner of a household, they must transfer ownership or delete the household first (shown as a blocking message).
-  - > **Note on Base currency / Month starts on:** the wireframe shows these in the Preferences card but they are household-level settings, already editable in Household Settings (E1.5). They will appear here as **read-only** values with a link to "Edit in Household Settings" to avoid duplication and the authority confusion of editing household data from a personal settings screen.
-  - AC: Export produces a downloadable file within 5 seconds for typical household data sizes.
-  - AC: Delete account confirmation requires the user's current password; once confirmed, access is revoked immediately.
+### New DB: `SavedChart` model
+```prisma
+model SavedChart {
+  id          String   @id @default(cuid())
+  householdId String
+  creatorId   String
+  name        String
+  chartType   String   // bar | line | donut | stacked_bar
+  measure     String   // spending | income | count
+  groupBy     String   // category | merchant | month
+  dateRange   String   // 3m | 6m | 12m | ytd
+  accountId   String?
+  categoryId  String?
+  view        String   @default("household")
+  isShared    Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  household   Household @relation(...)
+  creator     User      @relation(...)
+  @@index([householdId])
+}
+```
+Add reverse relations on `Household` and `User`. Non-breaking migration.
+
+### New API: `ReportsModule` (`apps/api/src/reports/`)
+
+- **E13.1 — Contracts + DB.** *(Size: S)*
+  - `packages/contracts/src/reports.ts` — Zod schemas for all 4 report endpoints + saved-charts CRUD.
+  - `SavedChart` Prisma migration (above).
+
+- **E13.2 — Report data endpoints.** *(Size: M)*
+  Four new GET endpoints under `/households/:id/reports/`:
+
+  | Endpoint | Params | Returns |
+  |---|---|---|
+  | `spending-by-category-over-time` | months (3/6/12), view, accountId? | `{ months: string[], categories: { id, name, color, amounts: number[] }[] }` |
+  | `period-comparison` | granularity (month/quarter/year), period1, period2 | `{ period1Label, period2Label, rows: { categoryId, name, period1Minor, period2Minor, deltaMinor, deltaPct }[], totals }` |
+  | `top-merchants` | months, view, limit (default 10) | `{ merchants: { name, amountMinor, count }[] }` — aggregated by `merchantNormalized` |
+  | `net-worth-trend` | months (6/12) | `{ points: { month, netWorthMinor }[] }` — computed from opening balances + cumulative ledger |
+
+  All enforce visibility via `buildScope()`. All exclude `isExcluded` transactions.
+
+- **E13.3 — Saved-charts CRUD.** *(Size: S)*
+  - `GET /households/:id/saved-charts` — returns charts where `isShared=true` OR `creatorId=me`.
+  - `POST /households/:id/saved-charts` — create; body validated by `CreateSavedChartSchema`.
+  - `DELETE /households/:id/saved-charts/:chartId` — owner or household owner can delete.
+
+- **E13.4 — Reports UI.** *(Size: L)*
+  New file: `apps/web/src/pages/ReportsPage.tsx`.
+
+  **1. Controls bar** (card row) — Period selector (Last 3M / 6M / This year / Custom), Household/Personal toggle, Account dropdown, Category dropdown. Shared state flows to all charts on the page.
+
+  **2. Featured chart — "Spending by category over time"** — calls `spending-by-category-over-time`. Toggle: Stacked bar (one `Bar` per category with `stackId`) ↔ Line (`TrendLineChart` with one line per category). Uses category colors.
+
+  **3. Period comparison** — Month vs month / Quarter vs quarter / Year vs year tabs. Two period dropdowns. Table: Category | Period 1 | Period 2 | Change (colored ▲/▼). Total row.
+
+  **4. Report library** (3-col grid, 5 cards) — each has a small chart (h=130) + title + ★ save button. ★ opens save dialog (name input + share toggle) → `POST /saved-charts`.
+
+  | Card | Data | Chart component |
+  |---|---|---|
+  | Income vs. expenses | `spending-over-time` | `SpendBarChart` |
+  | Net worth trend | `net-worth-trend` | `TrendLineChart` |
+  | Cash flow | `spending-over-time` (income − spending) | `SpendBarChart` |
+  | Top merchants | `top-merchants` | `SpendBarChart` |
+  | + Placeholder | — | Dashed card (links to builder below) |
+
+  **5. Custom chart builder** (2-col: form left, preview right):
+  - Form: Measure (Amount spent / Income / Count), Group by (Category / Merchant / Month), Chart type (Bar / Line / Donut / Stacked bar), Date range, Account filter, Share with household checkbox.
+  - Preview button → calls the appropriate endpoint based on form state and renders the selected chart type.
+  - "Save to dashboard" button → `POST /saved-charts` with full config.
+
+- **E13.5 — Dashboard: saved charts section.** *(Size: S)*
+  - `DashboardPage.tsx`: add `GET /saved-charts` query. Below existing Row 2, render a "Saved charts" section (only if `savedCharts.length > 0`) — same 2-col grid, each card renders the saved config using the same report endpoints + chart components. × button → `DELETE /saved-charts/:id`.
+  - Add `/reports` route to `App.tsx` and verify Reports nav item in `NavShell`.
+
+- **E13.6 — Configurable category selection for Spending-by-Category chart.** *(Size: M)*
+  - Users can choose which top-level expense categories appear as named series on the "Spending by category over time" chart; all others are rolled into an implicit "Other" bar.
+  - Selection applies only to top-level categories (never subcategories). "Transfer" is always excluded from both the picker and the chart.
+  - AC: A gear icon (⚙) appears in the chart card header; clicking it opens a popover with checkboxes for every top-level expense category.
+  - AC: On first open the currently-visible categories (returned by the API) are pre-checked.
+  - AC: Clicking Apply refetches the chart with the chosen categories as explicit named bars.
+  - AC: Selection persists across page reloads (stored in `localStorage`, keyed by household ID).
+  - AC: Selecting zero categories is blocked (Apply button disabled).
+  - AC: When all categories are selected, no "Other" bar is shown.
+  - AC: Stale `localStorage` IDs (e.g. a deleted category) are silently ignored by the server — that category's spend flows into "Other".
+  - API: `GET .../spending-by-category-over-time` gains an optional `categoryIds` query param (comma-separated IDs). When omitted, falls back to the existing top-4-by-spend logic (no breaking change).
+  - No DB migration required; preference stored client-side only in Phase 1.
 
 ---
 
@@ -419,4 +500,4 @@ Four cards in a 2-column grid, plus an AI card spanning full width (Epic 9):
 
 All epics complete and integrated such that the [PRD §7 acceptance checklist] passes: a two-person household can sign up with MFA, invite a partner with a role, add accounts by uploading statements and/or manual entry with visibility controls, manage categories/sub-categories, run budgets with sub-categories and a sinking fund, and view an accurate shared dashboard with the household/personal toggle and default charts — securely on the responsive web app.
 
-**Current status (2026-06-13):** Epics 0–8, 10 are merged to `main`. Epic 9 (BYOK AI) is not yet started. Epic 11 (Rental Investment) is planned. The core Phase 1 user journey is fully functional end-to-end on `main`.
+**Current status (2026-06-14):** Epics 0–8, 10 are merged to `main`. **Active: Epic 12 (Settings) + Epic 13 (Reports) — Wave 6.** Epic 9 (BYOK AI) and Epic 11 (Rental Investment) are planned for Wave 7. The core Phase 1 user journey is fully functional end-to-end on `main`.

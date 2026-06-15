@@ -44,13 +44,14 @@ interface BarData {
 
 interface SpendBarChartProps {
   data: BarData[];
-  bars: { key: string; label: string; color?: string; stackId?: string }[];
+  bars: { key: string; label: string; color?: string; stackId?: string; colorByValue?: (v: number) => string }[];
   formatValue?: (v: number) => string;
   height?: number;
   barRadius?: number | [number, number, number, number];
+  showLegend?: boolean;
 }
 
-export function SpendBarChart({ data, bars, formatValue, height = 300, barRadius = 0 }: SpendBarChartProps) {
+export function SpendBarChart({ data, bars, formatValue, height = 300, barRadius = 0, showLegend = true }: SpendBarChartProps) {
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
@@ -58,9 +59,13 @@ export function SpendBarChart({ data, bars, formatValue, height = 300, barRadius
         <XAxis dataKey="name" tick={{ fontSize: 12 }} />
         <YAxis tick={{ fontSize: 12 }} tickFormatter={formatValue} />
         <Tooltip content={(props) => <ChartTooltip {...(props as TooltipProps<number, string>)} formatValue={formatValue} />} />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
+        {showLegend && <Legend wrapperStyle={{ fontSize: 12 }} />}
         {bars.map((bar, i) => (
-          <Bar key={bar.key} dataKey={bar.key} name={bar.label} fill={bar.color ?? chart.palette[i % chart.palette.length]} radius={barRadius} isAnimationActive={false} stackId={bar.stackId} />
+          <Bar key={bar.key} dataKey={bar.key} name={bar.label} fill={bar.color ?? chart.palette[i % chart.palette.length]} radius={barRadius} isAnimationActive={false} stackId={bar.stackId}>
+            {bar.colorByValue && data.map((entry, idx) => (
+              <Cell key={idx} fill={bar.colorByValue!(entry[bar.key] as number)} />
+            ))}
+          </Bar>
         ))}
       </BarChart>
     </ResponsiveContainer>
@@ -79,9 +84,10 @@ interface TrendLineChartProps {
   lines: { key: string; label: string; color?: string }[];
   formatValue?: (v: number) => string;
   height?: number;
+  showLegend?: boolean;
 }
 
-export function TrendLineChart({ data, lines, formatValue, height = 300 }: TrendLineChartProps) {
+export function TrendLineChart({ data, lines, formatValue, height = 300, showLegend = true }: TrendLineChartProps) {
   return (
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
@@ -89,7 +95,7 @@ export function TrendLineChart({ data, lines, formatValue, height = 300 }: Trend
         <XAxis dataKey="name" tick={{ fontSize: 12 }} />
         <YAxis tick={{ fontSize: 12 }} tickFormatter={formatValue} />
         <Tooltip content={(props) => <ChartTooltip {...(props as TooltipProps<number, string>)} formatValue={formatValue} />} />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
+        {showLegend && <Legend wrapperStyle={{ fontSize: 12 }} />}
         {lines.map((line, i) => (
           <Line
             key={line.key}

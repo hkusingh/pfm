@@ -14,6 +14,7 @@ import { TransactionModule } from './transaction/transaction.module';
 import { ImportModule } from './import/import.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { BudgetModule } from './budget/budget.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { BudgetModule } from './budget/budget.module';
     ImportModule,
     DashboardModule,
     BudgetModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [

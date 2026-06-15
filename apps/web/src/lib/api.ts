@@ -70,6 +70,8 @@ async function request<T>(path: string, init?: RequestInit, allowRefresh = true)
     }
   }
 
+  if (res.status === 204) return null as T;
+
   const body = (await res.json()) as ApiResult<T>;
 
   if ('error' in body) {

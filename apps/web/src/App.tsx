@@ -18,6 +18,7 @@ import { ReclassifyPage } from './pages/ReclassifyPage';
 import { SplitTransactionPage } from './pages/SplitTransactionPage';
 import { TransactionsPage } from './pages/TransactionsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ReportsPage } from './pages/ReportsPage';
 import { InviteAcceptPage } from './pages/InviteAcceptPage';
 import { AdminLayout } from './components/AdminLayout';
 import { InvitesPage } from './pages/admin/InvitesPage';
@@ -77,6 +78,7 @@ export function App() {
               <Route path="/budgets/manage" element={<ManageBudgetPage />} />
               <Route path="/categories/:categoryId/reclassify" element={<ReclassifyPage />} />
               <Route path="/transactions/:txId/split" element={<SplitTransactionPage />} />
+              <Route path="/reports" element={<ReportsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/settings/household" element={<HouseholdSettingsPage />} />
             </Route>

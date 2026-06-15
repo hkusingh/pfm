@@ -97,6 +97,14 @@ export const MeResponseSchema = z.object({
 });
 export type MeResponse = z.infer<typeof MeResponseSchema>;
 
+// ─── Change password ──────────────────────────────────────────────────────────
+
+export const ChangePasswordBodySchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(12, 'Password must be at least 12 characters').max(128),
+});
+export type ChangePasswordBody = z.infer<typeof ChangePasswordBodySchema>;
+
 // ─── Token payload (internal — not a contract endpoint) ──────────────────────
 
 export type AccessTokenPayload = {

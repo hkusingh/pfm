@@ -6,6 +6,7 @@ import {
   RefreshBodySchema,
   VerifyEmailBodySchema,
   UpdateProfileBodySchema,
+  ChangePasswordBodySchema,
 } from '@pfm/contracts';
 import { ok } from '../common/response';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -95,5 +96,15 @@ export class AuthController {
   ): Promise<ReturnType<typeof ok>> {
     const updated = await this.auth.updateProfile(user.sub, body.name);
     return ok(updated);
+  }
+
+  @Patch('password')
+  @HttpCode(200)
+  async changePassword(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body(new ZodValidationPipe(ChangePasswordBodySchema)) body: { currentPassword: string; newPassword: string },
+  ): Promise<ReturnType<typeof ok>> {
+    await this.auth.changePassword(user.sub, body.currentPassword, body.newPassword);
+    return ok({ changed: true });
   }
 }

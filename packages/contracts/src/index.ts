@@ -10,3 +10,4 @@ export * from './transaction';
 export * from './import';
 export * from './dashboard';
 export * from './budget';
+export * from './reports';

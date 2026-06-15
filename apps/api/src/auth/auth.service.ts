@@ -234,6 +234,21 @@ export class AuthService {
     });
   }
 
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const valid = await argon2.verify(user.passwordHash, currentPassword);
+    if (!valid) throw new UnauthorizedException('Current password is incorrect');
+
+    const passwordHash = await argon2.hash(newPassword);
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: userId }, data: { passwordHash } });
+      await tx.session.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    });
+  }
+
   // Used by the global JWT guard to look up the current user
   async validateUser(userId: string) {
     return prisma.user.findUnique({

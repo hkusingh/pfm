@@ -34,6 +34,7 @@ model User {
   auditLogs       AuditLog[]
   categoryRules   CategoryRule[]
   signupInvites   SignupInvite[]
+  savedCharts     SavedChart[]
 }
 
 model Session {
@@ -115,6 +116,7 @@ model Household {
   importBatches  ImportBatch[]
   columnMappings ColumnMapping[]
   auditLogs      AuditLog[]
+  savedCharts    SavedChart[]
 }
 
 enum MemberRole {
@@ -464,6 +466,38 @@ model SignupInvite {
 
   @@index([email])
   @@index([token])
+}
+
+// ─── Saved charts (Reports / Dashboard) ──────────────────────────────────────
+
+model SavedChart {
+  id          String   @id @default(cuid())
+  householdId String
+  creatorId   String
+  name        String
+  // bar | line | donut | stacked_bar
+  chartType   String
+  // spending | income | count
+  measure     String
+  // category | merchant | month
+  groupBy     String
+  // 3m | 6m | 12m | ytd
+  dateRange   String
+  // net_worth_trend | income_vs_expenses | cash_flow | spending_by_category
+  reportKey   String?
+  accountId   String?
+  categoryId  String?
+  // household | personal
+  view        String   @default("household")
+  isShared    Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  creator   User      @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@index([householdId])
 }
 
 // ─── Audit ────────────────────────────────────────────────────────────────────
