@@ -65,19 +65,19 @@ acceptance bar for each.
 - **E10.4** Uncategorized badge on Transactions nav item.
 - **E10.5** Transaction exclusion flag (`isExcluded`) — exclude from all financial aggregations; toggle in recategorize panel.
 
-**Build right now (Wave 6 — Epics 12 + 13, parallel):**
+**Done (Wave 6 — Epics 12 + 13 ✅):**
 
-**Epic 12 — Full Settings page** (complete wireframe screen "8 · Settings"):
+**Epic 12 — Full Settings page** ✅ merged to `main` 2026-06-15:
 - **E12.1** Profile card — email display (read-only) + optional DOB field (`User.dob?` migration).
 - **E12.2** Login & security — `PATCH /auth/password` (verify current, hash new, revoke sessions).
 - **E12.3** Two-factor auth management card — list enrolled methods from `GET /auth/me`, manage / re-enroll flows, recovery-code regeneration.
 - **E12.4** Preferences & data card — base currency + month-start-day (editable, via `PATCH /households/:id`), Export data button, Delete account with email confirmation.
 
-**Epic 13 — Reports page** (wireframe screen "10 · Reports"):
-- **E13.1** DB: `SavedChart` model + migration; contracts (`reports.ts`).
-- **E13.2** API: `ReportsModule` — spending-by-category-over-time, period-comparison, top-merchants, net-worth-trend, saved-charts CRUD.
-- **E13.3** UI: `/reports` page — controls bar, featured stacked/line chart, period comparison table, report library (5 mini-charts), custom chart builder.
-- **E13.4** Save to dashboard — saved charts appear in new row on main Dashboard; × to remove.
+**Epic 13 — Reports page** ✅ merged to `main` 2026-06-15:
+- **E13.1** DB: `SavedChart` model + `reportKey` field + migrations; contracts (`reports.ts`).
+- **E13.2** API: `ReportsModule` — spending-by-category-over-time (top-level rollup), period-comparison (hierarchical), net-worth-trend (liability sign-flip fix), saved-charts CRUD.
+- **E13.3** UI: `/reports` page — controls bar, featured stacked/line chart with top-4+Other rollup, period comparison table with expandable subcategory rows, report library (income vs expenses, net worth trend, cash flow).
+- **E13.4** Save to dashboard — saved charts render real mini-charts on Dashboard (driven by `reportKey`); saved indicator persists across refresh; × to remove updates instantly.
 - **E13.6** Category picker — gear icon on featured chart opens a popover to choose which top-level categories appear as named bars (rest → "Other"); persisted in `localStorage`.
 
 **After Wave 6:**
@@ -283,7 +283,8 @@ cross-member leakage for each state.**
 | **2** | Epic 8 ✅ · Epic 1 ✅ (Household) · Epic 2 ✅ (Accounts) · Epic 4 ✅ (Categories) | All merged to `main`. |
 | **3** | Epic 3 ✅ · Epic 5 ✅ · Epic 6 ✅ (Budgets) · Epic 9 *(pending)* | E3, E5, E6 merged to `main`; E9 not yet started. |
 | **4** | Epic 7 (Dashboard) ✅ | Integrates transactions + budgets; merged to `main`. |
-| **5** | **Epic 10 (Dashboard & Transaction UX Polish)** | Wireframe alignment, user profile/settings, nav badge, transaction exclusion. |
+| **5** | **Epic 10 (Dashboard & Transaction UX Polish)** ✅ | Wireframe alignment, user profile/settings, nav badge, transaction exclusion. Merged to `main`. |
+| **6** | **Epic 12 (Settings)** ✅ · **Epic 13 (Reports)** ✅ | Full Settings page + Reports page. Merged to `main` 2026-06-15. |
 
 The rest of this section is the per-epic task list. Each story cites its PRD requirement and lists the
 concrete work and the acceptance bar. Sizes (S/M/L) carry over from the epic doc.

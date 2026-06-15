@@ -5,9 +5,9 @@ The product/requirements source of truth lives in [`/docs`](./docs); the build p
 [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md). When code and docs disagree, the docs win —
 raise the conflict rather than silently diverging.
 
-> **Current status (2026-06-12):** Waves 1–4 are **done** (Epics 0–8, E5, E7 merged to `main`).
-> Active work: **Epic 10 — Dashboard & Transaction UX Polish** on branch
-> `epic/10-dashboard-transactions-ux`. See the **"Status & Next Up"** section at the top of
+> **Current status (2026-06-15):** Waves 1–6 are **done** (Epics 0–8, 10, 12, 13 merged to `main`).
+> All Phase 1 epics are complete. Next: **Wave 7 — Epic 9 (BYOK AI Categorization) + Epic 11 (Rental
+> Investment Tracking)**. See the **"Status & Next Up"** section at the top of
 > `IMPLEMENTATION_PLAN.md` for the full ordered work list.
 > **Deployment is local-first — do not stand up a hosted environment yet** (IMPLEMENTATION_PLAN §5.2).
 

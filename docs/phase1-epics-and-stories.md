@@ -27,8 +27,8 @@ flowchart TD
   E7[Epic 7 — Dashboard ✅]:::done
   E8[Epic 8 — Platform Access ✅]:::done
   E10[Epic 10 — UX Polish ✅]:::done
-  E12[Epic 12 — Settings Page]:::b
-  E13[Epic 13 — Reports Page]:::b
+  E12[Epic 12 — Settings Page ✅]:::done
+  E13[Epic 13 — Reports Page ✅]:::done
 
   E0 --> E1
   E0 --> E2
@@ -59,7 +59,7 @@ flowchart TD
 | **Wave 3** | Epic 3 ✅, Epic 5 ✅, Epic 6 ✅ | Merged to `main`. Epic 9 (BYOK AI) deferred. |
 | **Wave 4** | Epic 7 ✅ | Dashboard + reports. Merged to `main`. |
 | **Wave 5** | Epic 10 ✅ | UX Polish — all stories done, merged to `main` 2026-06-13. |
-| **Wave 6** | **Epic 12** *(active)*, **Epic 13** *(active)* | Full Settings page + Reports page (parallel). |
+| **Wave 6** | Epic 12 ✅, Epic 13 ✅ | Full Settings page + Reports page. Merged to `main` 2026-06-15. |
 | **Wave 7** | **Epic 11** *(planned)*, **Epic 9** *(planned)* | Rental Investment Tracking + BYOK AI Categorization. |
 
 > **Phase 1 scope note:** Phase 1 is a **limited-user test release** and is **invitation-only** (Epic 8). Data enters via **document/statement upload (Epic 3) and manual entry (Epic 2) only**. **Plaid live aggregation is deferred to Phase 2** — its stories are listed under Epic 2 as Phase 2 for forward planning, not Phase 1 work. A thin **BYOK AI categorization** slice (Epic 9) is included in Phase 1: households may supply their own LLM provider key; AI is always optional. The broader AI insights platform remains Phase 2.
@@ -349,7 +349,7 @@ flowchart TD
 
 ---
 
-## 9e. Epic 12 — User Account Settings (full `/settings` page)  *(Wave 6 — active)*
+## 9e. Epic 12 — User Account Settings (full `/settings` page)  ✅ *merged to `main` 2026-06-15*
 
 **Goal:** complete `/settings` to exactly match wireframe screen "8 · Settings". Epic 10 shipped name-only profile. This epic adds the three remaining functional cards and makes the page fully wire-frame compliant. AI categorization card is Epic 9 scope, shown as a placeholder here. **Depends on:** E0 ✅, E10 ✅.
 
@@ -389,7 +389,7 @@ flowchart TD
 
 ---
 
-## 9f. Epic 13 — Reports page  *(Wave 6 — active)*
+## 9f. Epic 13 — Reports page  ✅ *merged to `main` 2026-06-15*
 
 **Goal:** build `/reports` matching wireframe screen "10 · Reports" — an explorable chart gallery with interactive controls, a featured spending chart, period comparison, a report library of 5 mini-charts, a custom chart builder, and the ability to save any chart to the main Dashboard. **Depends on:** E5 ✅, E7 ✅.
 
@@ -500,4 +500,4 @@ Add reverse relations on `Household` and `User`. Non-breaking migration.
 
 All epics complete and integrated such that the [PRD §7 acceptance checklist] passes: a two-person household can sign up with MFA, invite a partner with a role, add accounts by uploading statements and/or manual entry with visibility controls, manage categories/sub-categories, run budgets with sub-categories and a sinking fund, and view an accurate shared dashboard with the household/personal toggle and default charts — securely on the responsive web app.
 
-**Current status (2026-06-14):** Epics 0–8, 10 are merged to `main`. **Active: Epic 12 (Settings) + Epic 13 (Reports) — Wave 6.** Epic 9 (BYOK AI) and Epic 11 (Rental Investment) are planned for Wave 7. The core Phase 1 user journey is fully functional end-to-end on `main`.
+**Current status (2026-06-15):** Epics 0–8, 10, 12, 13 are merged to `main`. All Phase 1 epics are complete. **Next (Wave 7):** Epic 9 (BYOK AI Categorization) and Epic 11 (Rental Investment Tracking). The core Phase 1 user journey is fully functional end-to-end on `main`.
