@@ -85,7 +85,9 @@ acceptance bar for each.
    `merchantRuleKey` prefix) with a configurable match threshold, replacing the current
    exact/substring approach. Prerequisite for reliable bulk classification before Epic 9 AI arrives.
 2. **Epic 9 — BYOK AI Categorization** (E9.1–E9.4) — depends on E3 ✅, E4 ✅.
-3. **Epic 11 — Rental Investment Tracking** — account segments (personal/rental/business), conditional Rental nav.
+
+**Phase 2 (not Phase 1):**
+- **Epic 11 — Rental Investment Tracking** — moved to Phase 2. Account segments, per-property P&L, cap rate. Plan kept in `docs/epic-11-rental-investment.md` for reference.
 
 **Deployment posture:** **local-first.** Develop and validate on your machine with seed/real data. Do
 **not** stand up a persistent hosted environment yet — see §5.2 for the local-first → smoke-deploy →

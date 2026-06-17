@@ -60,7 +60,7 @@ flowchart TD
 | **Wave 4** | Epic 7 ✅ | Dashboard + reports. Merged to `main`. |
 | **Wave 5** | Epic 10 ✅ | UX Polish — all stories done, merged to `main` 2026-06-13. |
 | **Wave 6** | Epic 12 ✅, Epic 13 ✅ | Full Settings page + Reports page. Merged to `main` 2026-06-15. |
-| **Wave 7** | **Epic 11** *(planned)*, **Epic 9** *(planned)* | Rental Investment Tracking + BYOK AI Categorization. |
+| **Wave 7** | **Epic 9** *(planned)* | BYOK AI Categorization. |
 
 > **Phase 1 scope note:** Phase 1 is a **limited-user test release** and is **invitation-only** (Epic 8). Data enters via **document/statement upload (Epic 3) and manual entry (Epic 2) only**. **Plaid live aggregation is deferred to Phase 2** — its stories are listed under Epic 2 as Phase 2 for forward planning, not Phase 1 work. A thin **BYOK AI categorization** slice (Epic 9) is included in Phase 1: households may supply their own LLM provider key; AI is always optional. The broader AI insights platform remains Phase 2.
 
@@ -323,9 +323,11 @@ flowchart TD
 
 ---
 
-## 9d. Epic 11 — Rental Investment Tracking  *(planned — Wave 6)*
+## 9d. Epic 11 — Rental Investment Tracking  *(Phase 2 — deferred)*
 
 **Goal:** let households that own rental properties view rental income and expenses separately from personal finances. A Settings toggle controls whether rental appears in the main view or as a dedicated nav section. **Depends on:** E2 ✅, E5 ✅. **Full plan:** `docs/epic-11-rental-investment.md`.
+
+> **Moved to Phase 2.** Rental tracking is a useful feature but not required for the Phase 1 limited-user test. The plan and story breakdown are preserved in `docs/epic-11-rental-investment.md` for when Phase 2 begins.
 
 - **E11.1 — Account segment.** *(Size: S)*
   - `AccountSegment { personal rental business }` enum; `Account.segment @default(personal)` (non-breaking migration).
@@ -500,4 +502,4 @@ Add reverse relations on `Household` and `User`. Non-breaking migration.
 
 All epics complete and integrated such that the [PRD §7 acceptance checklist] passes: a two-person household can sign up with MFA, invite a partner with a role, add accounts by uploading statements and/or manual entry with visibility controls, manage categories/sub-categories, run budgets with sub-categories and a sinking fund, and view an accurate shared dashboard with the household/personal toggle and default charts — securely on the responsive web app.
 
-**Current status (2026-06-15):** Epics 0–8, 10, 12, 13 are merged to `main`. All Phase 1 epics are complete. **Next (Wave 7):** Epic 9 (BYOK AI Categorization) and Epic 11 (Rental Investment Tracking). The core Phase 1 user journey is fully functional end-to-end on `main`.
+**Current status (2026-06-15):** Epics 0–8, 10, 12, 13 are merged to `main`. All Phase 1 epics are complete. **Next (Wave 7):** Epic 9 (BYOK AI Categorization). Epic 11 (Rental Investment Tracking) has been moved to Phase 2. The core Phase 1 user journey is fully functional end-to-end on `main`.

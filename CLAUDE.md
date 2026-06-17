@@ -6,8 +6,8 @@ The product/requirements source of truth lives in [`/docs`](./docs); the build p
 raise the conflict rather than silently diverging.
 
 > **Current status (2026-06-15):** Waves 1–6 are **done** (Epics 0–8, 10, 12, 13 merged to `main`).
-> All Phase 1 epics are complete. Next: **Wave 7 — Epic 9 (BYOK AI Categorization) + Epic 11 (Rental
-> Investment Tracking)**. See the **"Status & Next Up"** section at the top of
+> All Phase 1 epics are complete. Next: **Wave 7 — Epic 9 (BYOK AI Categorization)**. Epic 11
+> (Rental Investment Tracking) is **Phase 2** — deferred. See the **"Status & Next Up"** section at the top of
 > `IMPLEMENTATION_PLAN.md` for the full ordered work list.
 > **Deployment is local-first — do not stand up a hosted environment yet** (IMPLEMENTATION_PLAN §5.2).
 
