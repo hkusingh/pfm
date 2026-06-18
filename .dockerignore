@@ -1,0 +1,20 @@
+.git
+.env
+.env.*
+!.env.example
+
+# Dependencies — reinstalled inside the image
+node_modules
+**/node_modules
+
+# Build artifacts — rebuilt inside the image
+dist
+**/dist
+
+# Web app — not needed for the API image
+apps/web
+
+# Test/dev tooling
+packages/testing/src
+coverage
+*.log
