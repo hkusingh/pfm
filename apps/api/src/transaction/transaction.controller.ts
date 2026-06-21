@@ -5,7 +5,7 @@ import { ok } from '../common/response';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { TransactionService } from './transaction.service';
-import { RecategorizeTxBodySchema, PutSplitsBodySchema, ExcludeTransactionBodySchema } from '@pfm/contracts';
+import { RecategorizeTxBodySchema, PutSplitsBodySchema, ExcludeTransactionBodySchema, LinkTransferPairBodySchema, TransferRouteBodySchema } from '@pfm/contracts';
 import type { AccessTokenPayload } from '@pfm/contracts';
 
 @Controller('households/:householdId/transactions')
@@ -27,6 +27,7 @@ export class TransactionController {
     @Query('limit') limit?: string,
     @Query('sortBy') sortBy?: string,
     @Query('sortDir') sortDir?: string,
+    @Query('hideLinked') hideLinked?: string,
   ) {
     return ok(
       await this.txs.listTransactions(householdId, user.sub, {
@@ -41,6 +42,7 @@ export class TransactionController {
         limit: limit ? parseInt(limit, 10) : undefined,
         sortBy: sortBy === 'amount' ? 'amount' : 'date',
         sortDir: sortDir === 'asc' ? 'asc' : 'desc',
+        hideLinked: hideLinked === 'true',
       }),
     );
   }
@@ -114,6 +116,55 @@ export class TransactionController {
     @Res() res: Response,
   ) {
     await this.txs.deleteTransaction(txId, householdId, user.sub);
+    res.status(HttpStatus.NO_CONTENT).send();
+  }
+
+  // ── Transfer pairs ────────────────────────────────────────────────────────
+
+  @Post('transfer-pairs')
+  @HttpCode(200)
+  async linkPair(
+    @Param('householdId') householdId: string,
+    @Body(new ZodValidationPipe(LinkTransferPairBodySchema)) body: z.infer<typeof LinkTransferPairBodySchema>,
+  ) {
+    return ok(await this.txs.linkTransferPair(body.debitTxId, body.creditTxId, householdId));
+  }
+
+  @Delete('transfer-pairs/:pairId')
+  async unlinkPair(
+    @Param('householdId') householdId: string,
+    @Param('pairId') pairId: string,
+    @Res() res: Response,
+  ) {
+    await this.txs.unlinkTransferPair(pairId, householdId);
+    res.status(HttpStatus.NO_CONTENT).send();
+  }
+
+  // ── Transfer routes ───────────────────────────────────────────────────────
+
+  @Post('resolve-routes')
+  @HttpCode(200)
+  async resolveRoutes(@Param('householdId') householdId: string) {
+    return ok(await this.txs.resolveAllRoutes(householdId));
+  }
+
+  @Post('transfer-routes')
+  @HttpCode(200)
+  async createRoutes(
+    @Param('householdId') householdId: string,
+    @CurrentUser() user: AccessTokenPayload,
+    @Body(new ZodValidationPipe(TransferRouteBodySchema.array())) body: z.infer<typeof TransferRouteBodySchema>[],
+  ) {
+    return ok(await this.txs.createTransferRoutes(body, householdId, user.sub));
+  }
+
+  @Delete('transfer-routes/:routeId')
+  async deleteRoute(
+    @Param('householdId') householdId: string,
+    @Param('routeId') routeId: string,
+    @Res() res: Response,
+  ) {
+    await this.txs.deleteTransferRoute(routeId, householdId);
     res.status(HttpStatus.NO_CONTENT).send();
   }
 }

@@ -49,11 +49,24 @@ export const FlaggedDuplicateSchema = z.object({
   existingPostedDate: z.string(),  // may differ slightly from incoming date
 });
 
+// Transfer-kind transactions with no known routing rule — user must assign a counterpart.
+export const NeedsRoutingItemSchema = z.object({
+  txId: z.string(),
+  postedDate: z.string(),
+  merchant: z.string().nullable(),
+  amountMinor: z.number().int(),
+  // Amount-based candidate counterpart found in another account (suggestion only).
+  suggestedCounterpartAccountId: z.string().nullable(),
+  suggestedCounterpartAccountName: z.string().nullable(),
+});
+export type NeedsRoutingItem = z.infer<typeof NeedsRoutingItemSchema>;
+
 export const ImportCommitResponseSchema = z.object({
   imported: z.number().int(),
   skipped: z.number().int(),   // exact-hash dedup skips
   errors: z.number().int(),
   flagged: z.array(FlaggedDuplicateSchema), // fuzzy matches needing user review
+  needsRouting: z.array(NeedsRoutingItemSchema), // transfer-kind txns with no routing rule
 });
 
 // ── Confirm flagged (step 3 — optional) ─────────────────────────────────────

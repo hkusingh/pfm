@@ -13,6 +13,7 @@ import {
 import type { ImportPreviewResponse, ImportCommitBody, ImportCommitResponse, ConfirmFlaggedBody } from '@pfm/contracts';
 import type { CsvColumnMapping, FlaggedDuplicate } from '@pfm/contracts';
 import { parsePdf } from './pdf-parser';
+import { TransactionService } from '../transaction/transaction.service';
 
 // Phase 1: local filesystem. Swap for GCS-backed impl in production.
 class LocalObjectStore {
@@ -48,6 +49,8 @@ function detectFormat(originalName: string, mimeType: string): FileFormat {
 
 @Injectable()
 export class ImportService {
+  constructor(private readonly txService: TransactionService) {}
+
   // ── E3.1 — Upload + preview ───────────────────────────────────────────────
 
   async preview(
@@ -240,6 +243,7 @@ export class ImportService {
     let skipped = 0;
     let errors = 0;
     const flagged: FlaggedDuplicate[] = [];
+    const importedTxIds: string[] = [];
 
     for (const row of rows) {
       try {
@@ -301,7 +305,7 @@ export class ImportService {
           if (rule) categoryId = rule.categoryId;
         }
 
-        await prisma.transaction.create({
+        const newTx = await prisma.transaction.create({
           data: {
             accountId: account.id,
             postedDate,
@@ -314,6 +318,7 @@ export class ImportService {
             importBatchId: batch.id,
           },
         });
+        importedTxIds.push(newTx.id);
         imported++;
       } catch (err) {
         console.error('Import row error:', err);
@@ -326,7 +331,10 @@ export class ImportService {
       data: { status: 'done', importedCount: imported, skippedCount: skipped },
     });
 
-    return { imported, skipped, errors, flagged };
+    // Resolve transfer links for the newly imported transactions (Steps A/B/C)
+    const needsRouting = await this.txService.resolveTransferLinks(householdId, importedTxIds);
+
+    return { imported, skipped, errors, flagged, needsRouting };
   }
 
   // ── E3.2b — Confirm flagged (import fuzzy-matched rows user approved) ───────

@@ -20,6 +20,22 @@ export const PutSplitsBodySchema = z.object({
 });
 export type PutSplitsBody = z.infer<typeof PutSplitsBodySchema>;
 
+// ── Transfer linking ─────────────────────────────────────────────────────────
+
+export const TransferPairInfoSchema = z.object({
+  pairId: z.string(),
+  counterpartTxId: z.string(),
+  counterpartAccountId: z.string(),
+  counterpartAccountName: z.string(),
+});
+export type TransferPairInfo = z.infer<typeof TransferPairInfoSchema>;
+
+export const AwaitingCounterpartSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+});
+export type AwaitingCounterpart = z.infer<typeof AwaitingCounterpartSchema>;
+
 // ── Transaction list (household-level, visibility-scoped) ────────────────────
 
 export const TransactionListItemSchema = z.object({
@@ -36,10 +52,47 @@ export const TransactionListItemSchema = z.object({
   hasSplit: z.boolean(),
   splits: z.array(TransactionSplitItemSchema),
   isExcluded: z.boolean(),
+  externalTransfer: z.boolean().default(false),
   dedupHash: z.string(),
   createdAt: z.string(),
+  transferPair: TransferPairInfoSchema.nullable(),
+  awaitingCounterpartAccount: AwaitingCounterpartSchema.nullable(),
 });
 export type TransactionListItem = z.infer<typeof TransactionListItemSchema>;
+
+// ── Transfer pair CRUD ────────────────────────────────────────────────────────
+
+export const LinkTransferPairBodySchema = z.object({
+  debitTxId: z.string(),
+  creditTxId: z.string(),
+});
+export type LinkTransferPairBody = z.infer<typeof LinkTransferPairBodySchema>;
+
+export const TransferPairResponseSchema = z.object({
+  pairId: z.string(),
+  debitTxId: z.string(),
+  creditTxId: z.string(),
+});
+export type TransferPairResponse = z.infer<typeof TransferPairResponseSchema>;
+
+// ── Transfer routes ───────────────────────────────────────────────────────────
+
+export const TransferRouteBodySchema = z.object({
+  sourceAccountId: z.string(),
+  merchantMatch: z.string().min(1),
+  counterpartAccountId: z.string().nullable(), // null = external
+  txId: z.string().optional(), // when provided, apply route directly to this transaction
+});
+export type TransferRouteBody = z.infer<typeof TransferRouteBodySchema>;
+
+export const TransferRouteResponseSchema = z.object({
+  id: z.string(),
+  sourceAccountId: z.string(),
+  merchantMatch: z.string(),
+  counterpartAccountId: z.string().nullable(),
+  counterpartAccountName: z.string().nullable(),
+});
+export type TransferRouteResponse = z.infer<typeof TransferRouteResponseSchema>;
 
 export const TransactionListResponseSchema = z.object({
   items: z.array(TransactionListItemSchema),

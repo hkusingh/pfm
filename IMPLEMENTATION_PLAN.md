@@ -89,9 +89,9 @@ acceptance bar for each.
 **Phase 2 (not Phase 1):**
 - **Epic 11 — Rental Investment Tracking** — moved to Phase 2. Account segments, per-property P&L, cap rate. Plan kept in `docs/epic-11-rental-investment.md` for reference.
 
-**Deployment posture:** **local-first.** Develop and validate on your machine with seed/real data. Do
-**not** stand up a persistent hosted environment yet — see §5.2 for the local-first → smoke-deploy →
-continuous-deploy sequence and the local↔hosted parity rules to follow while building.
+**Deployment posture:** local-first for development, **with a GCP staging environment being stood up
+now** (continuous deploy from `main`). Production follows at limited-test launch. Runbook + CI/CD:
+**[`docs/gcp-hosting.md`](docs/gcp-hosting.md)**; sequence + parity rules in §5.2.
 
 **Recent decisions captured below:** local-first deployment + GCP/Neon rationale (§5.1–5.2);
 invitation-only access policy (§8); user-provided (BYOK) AI credentials, pulled into Phase 1 (§9);
@@ -607,7 +607,12 @@ Don't reach for GCP-proprietary runtime APIs inside app code; keep that at the i
 > Azure Container Apps later is a redeploy, not a rewrite. AWS adds breadth + Bedrock-hosted Claude;
 > Azure suits MS-ecosystem shops; neither is a Phase-1 factor.
 
-### 5.2 Deployment sequence — local-first (do NOT host a persistent env yet)
+### 5.2 Deployment sequence — local-first, staging next
+
+> **Decision (updated):** stand up a **GCP staging environment now** (continuous deploy from `main`),
+> even before all Phase-1 features land, so the deploy path is proven while the surface is small.
+> Production follows at the invite-only limited-test launch. Full step-by-step + CI/CD pipeline:
+> **[`docs/gcp-hosting.md`](docs/gcp-hosting.md)**.
 
 Validate the product on your machine before paying for any infra. Serverless idles near-zero, but a
 persistent hosted environment earns its keep only once there are humans to serve.

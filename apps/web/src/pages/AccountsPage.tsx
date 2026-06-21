@@ -13,7 +13,9 @@ type Account = {
   institution: string | null;
   mask: string | null;
   balanceMinor: number;
+  openingBalanceMinor: number;
   balanceAsOfDate: string | null;
+  lastTransactionDate: string | null;
   currency: string;
   visibility: 'shared' | 'private' | 'balance_only';
   ownerUserId: string | null;
@@ -153,14 +155,98 @@ function ImportHistory({ householdId }: { householdId: string }) {
   );
 }
 
-function BankIcon({ currency }: { currency: string }) {
-  const isNonBase = currency !== 'USD';
+type KnownInstitution = {
+  name: string;
+  domain: string;
+  group: 'bank' | 'credit_card' | 'investment' | 'other';
+  color: string; // brand color used in fallback avatar
+};
+
+export const KNOWN_INSTITUTIONS: KnownInstitution[] = [
+  // Banks
+  { name: 'Ally Bank',              domain: 'ally.com',               group: 'bank',        color: '#6B2D8B' },
+  { name: 'Bank of America',        domain: 'bankofamerica.com',       group: 'bank',        color: '#E31837' },
+  { name: 'Capital One',            domain: 'capitalone.com',          group: 'bank',        color: '#CF1020' },
+  { name: 'Chase',                  domain: 'chase.com',               group: 'bank',        color: '#117ACA' },
+  { name: 'Citibank',               domain: 'citi.com',                group: 'bank',        color: '#003A80' },
+  { name: 'Citizens Bank',          domain: 'citizensbank.com',        group: 'bank',        color: '#008000' },
+  { name: 'Fifth Third Bank',       domain: '53.com',                  group: 'bank',        color: '#006236' },
+  { name: 'Goldman Sachs (Marcus)', domain: 'marcus.com',              group: 'bank',        color: '#2C2C2C' },
+  { name: 'HSBC',                   domain: 'hsbc.com',                group: 'bank',        color: '#DB0011' },
+  { name: 'Huntington Bank',        domain: 'huntington.com',          group: 'bank',        color: '#00833E' },
+  { name: 'KeyBank',                domain: 'key.com',                 group: 'bank',        color: '#CC0000' },
+  { name: 'Navy Federal CU',        domain: 'navyfcu.org',             group: 'bank',        color: '#002B5C' },
+  { name: 'PNC Bank',               domain: 'pnc.com',                 group: 'bank',        color: '#F58025' },
+  { name: 'Regions Bank',           domain: 'regions.com',             group: 'bank',        color: '#005587' },
+  { name: 'SoFi',                   domain: 'sofi.com',                group: 'bank',        color: '#00A875' },
+  { name: 'Synchrony Bank',         domain: 'synchrony.com',           group: 'bank',        color: '#005596' },
+  { name: 'TD Bank',                domain: 'td.com',                  group: 'bank',        color: '#2B8A2B' },
+  { name: 'Truist',                 domain: 'truist.com',              group: 'bank',        color: '#4B0082' },
+  { name: 'U.S. Bank',              domain: 'usbank.com',              group: 'bank',        color: '#002B5C' },
+  { name: 'USAA',                   domain: 'usaa.com',                group: 'bank',        color: '#003366' },
+  { name: 'Wells Fargo',            domain: 'wellsfargo.com',          group: 'bank',        color: '#CD2E25' },
+  // Credit cards
+  { name: 'American Express',       domain: 'americanexpress.com',     group: 'credit_card', color: '#2E77BC' },
+  { name: 'Barclays',               domain: 'barclays.com',            group: 'credit_card', color: '#00AEEF' },
+  { name: 'Discover',               domain: 'discover.com',            group: 'credit_card', color: '#F76F20' },
+  // Investment
+  { name: 'Charles Schwab',         domain: 'schwab.com',              group: 'investment',  color: '#00A0DF' },
+  { name: 'E*TRADE',                domain: 'etrade.com',              group: 'investment',  color: '#6633CC' },
+  { name: 'Fidelity',               domain: 'fidelity.com',            group: 'investment',  color: '#006800' },
+  { name: 'Merrill',                domain: 'merrilledge.com',         group: 'investment',  color: '#CC0000' },
+  { name: 'Morgan Stanley',         domain: 'morganstanley.com',       group: 'investment',  color: '#003366' },
+  { name: 'Robinhood',              domain: 'robinhood.com',           group: 'investment',  color: '#00C805' },
+  { name: 'Vanguard',               domain: 'vanguard.com',            group: 'investment',  color: '#8B1A1A' },
+];
+
+const INSTITUTION_GROUP_LABELS: Record<KnownInstitution['group'], string> = {
+  bank: 'Banks',
+  credit_card: 'Credit Cards',
+  investment: 'Investment',
+  other: 'Other',
+};
+
+function getKnownInstitution(institution: string | null): KnownInstitution | null {
+  if (!institution) return null;
+  const exact = KNOWN_INSTITUTIONS.find((i) => i.name === institution);
+  if (exact) return exact;
+  const lower = institution.toLowerCase();
+  return KNOWN_INSTITUTIONS.find((i) => lower.includes(i.name.toLowerCase())) ?? null;
+}
+
+// Logos are pre-downloaded to public/logos/ — slug is the first segment of the domain.
+function localLogoPath(domain: string): string {
+  return `/logos/${domain.split('.')[0]}.png`;
+}
+
+function InstitutionLogo({ institution, name }: { institution: string | null; name: string }) {
+  const known = getKnownInstitution(institution);
+  const [failed, setFailed] = useState(false);
+  const seed = institution ?? name;
+  const bgColor = known?.color ?? '#4B5563';
+
+  if (known && !failed) {
+    return (
+      <div className="w-9 h-9 rounded-lg flex-shrink-0 overflow-hidden bg-white border border-gray-100 shadow-sm flex items-center justify-center">
+        <img
+          src={localLogoPath(known.domain)}
+          alt={known.name}
+          className="w-8 h-8 object-contain"
+          onError={() => setFailed(true)}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className={`w-9 h-9 rounded-lg flex-shrink-0 ${
-      isNonBase
-        ? 'bg-gradient-to-br from-amber-500 to-blue-800'
-        : 'bg-gradient-to-br from-blue-600 to-blue-900'
-    }`} />
+    <div
+      className="w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center"
+      style={{ backgroundColor: bgColor }}
+    >
+      <span className="text-white text-sm font-bold select-none">
+        {seed.charAt(0).toUpperCase()}
+      </span>
+    </div>
   );
 }
 
@@ -185,6 +271,7 @@ export function AccountsPage() {
   const [addType, setAddType] = useState('checking');
   const [addCurrency, setAddCurrency] = useState('USD');
   const [addInstitution, setAddInstitution] = useState('');
+  const [addInstitutionCustom, setAddInstitutionCustom] = useState(false);
   const [addMask, setAddMask] = useState('');
   const [addBalance, setAddBalance] = useState('0');
   const [addBalanceAsOf, setAddBalanceAsOf] = useState('');
@@ -198,7 +285,7 @@ export function AccountsPage() {
       qc.invalidateQueries({ queryKey: ['accounts'] });
       setShowAddForm(false);
       setAddName(''); setAddType('checking'); setAddCurrency('USD');
-      setAddInstitution(''); setAddMask(''); setAddBalance('0');
+      setAddInstitution(''); setAddInstitutionCustom(false); setAddMask(''); setAddBalance('0');
       setAddBalanceAsOf(''); setAddVisibility('shared'); setAddError('');
     },
     onError: (err) => setAddError(err instanceof ApiException ? err.message : 'Failed to create account.'),
@@ -386,6 +473,7 @@ export function AccountsPage() {
   const [editName, setEditName] = useState('');
   const [editType, setEditType] = useState('checking');
   const [editInstitution, setEditInstitution] = useState('');
+  const [editInstitutionCustom, setEditInstitutionCustom] = useState(false);
   const [editMask, setEditMask] = useState('');
   const [editBalance, setEditBalance] = useState('');
   const [editBalanceAsOf, setEditBalanceAsOf] = useState('');
@@ -395,9 +483,11 @@ export function AccountsPage() {
     setEditingId(acct.id);
     setEditName(acct.name);
     setEditType(acct.type);
+    const isKnown = KNOWN_INSTITUTIONS.some((i) => i.name === acct.institution);
     setEditInstitution(acct.institution ?? '');
+    setEditInstitutionCustom(!!acct.institution && !isKnown);
     setEditMask(acct.mask ?? '');
-    setEditBalance((Math.abs(acct.balanceMinor) / 100).toFixed(2));
+    setEditBalance((Math.abs(acct.openingBalanceMinor) / 100).toFixed(2));
     setEditBalanceAsOf(acct.balanceAsOfDate ?? '');
     setEditError('');
   }
@@ -549,8 +639,42 @@ export function AccountsPage() {
                     <option value="balance_only">Balance-only</option>
                   </select>
                 </div>
-                <FormField label="Institution (optional)" name="addInstitution" type="text"
-                  value={addInstitution} onChange={(e) => setAddInstitution(e.target.value)} placeholder="e.g. Chase" />
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700">Institution</label>
+                  <select
+                    value={addInstitutionCustom ? '__other__' : (addInstitution || '')}
+                    onChange={(e) => {
+                      if (e.target.value === '__other__') {
+                        setAddInstitutionCustom(true);
+                        setAddInstitution('');
+                      } else {
+                        setAddInstitutionCustom(false);
+                        setAddInstitution(e.target.value);
+                      }
+                    }}
+                    className="block w-full h-[38px] rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    <option value="">— Select institution —</option>
+                    {(['bank', 'credit_card', 'investment'] as const).map((group) => (
+                      <optgroup key={group} label={INSTITUTION_GROUP_LABELS[group]}>
+                        {KNOWN_INSTITUTIONS.filter((i) => i.group === group).map((i) => (
+                          <option key={i.name} value={i.name}>{i.name}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                    <option value="__other__">Other (specify)…</option>
+                  </select>
+                  {addInstitutionCustom && (
+                    <input
+                      type="text"
+                      value={addInstitution}
+                      onChange={(e) => setAddInstitution(e.target.value)}
+                      placeholder="Institution name"
+                      autoFocus
+                      className="block w-full h-[38px] rounded-lg border border-gray-300 px-3 py-2 text-sm mt-1"
+                    />
+                  )}
+                </div>
                 <FormField label="Last 4 digits (optional)" name="addMask" type="text"
                   value={addMask} onChange={(e) => setAddMask(e.target.value)} placeholder="4821" maxLength={4} />
                 <FormField label="Opening balance" name="addBalance" type="number"
@@ -558,7 +682,6 @@ export function AccountsPage() {
                 <div className="space-y-1">
                   <label className="block text-sm font-medium text-gray-700">
                     Balance as of
-                    <span className="ml-1 font-normal text-gray-400 text-xs">— transactions before this date are ignored</span>
                   </label>
                   <input
                     type="date"
@@ -566,6 +689,7 @@ export function AccountsPage() {
                     onChange={(e) => setAddBalanceAsOf(e.target.value)}
                     className="block w-full h-[38px] rounded-lg border border-gray-300 px-3 py-2 text-sm"
                   />
+                  <p className="text-xs text-gray-400">Enter the balance at end of this date; transactions on or before it are treated as already included.</p>
                 </div>
               </div>
               {addError && <p className="text-sm text-red-600">{addError}</p>}
@@ -944,7 +1068,7 @@ export function AccountsPage() {
                   <div key={acct.id}>
                     <div className="flex items-center justify-between px-5 py-3 gap-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        <BankIcon currency={acct.currency} />
+                        <InstitutionLogo institution={acct.institution} name={acct.name} />
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-gray-900 truncate">
                             {acct.name}
@@ -956,8 +1080,8 @@ export function AccountsPage() {
                           <p className={`text-xs ${LIABILITY_TYPES.has(acct.type) && acct.balanceMinor > 0 ? 'text-red-600' : 'text-gray-500'}`}>
                             {acct.mask ? `····${acct.mask} · ` : ''}
                             {formatBalance(effectiveBalance(acct.balanceMinor, acct.type), acct.currency)}
-                            {acct.balanceAsOfDate && (
-                              <span className="text-gray-400"> · as of {new Date(acct.balanceAsOfDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                            {(acct.lastTransactionDate ?? acct.balanceAsOfDate) && (
+                              <span className="text-gray-400"> · as of {new Date((acct.lastTransactionDate ?? acct.balanceAsOfDate)! + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                             )}
                             {acct.currency !== 'USD' && (
                               <span className="text-gray-400"> · shown natively, not in USD totals</span>
@@ -1023,13 +1147,39 @@ export function AccountsPage() {
                             </div>
                             <div className="space-y-1">
                               <label className="block text-xs font-medium text-gray-600">Institution</label>
-                              <input
-                                type="text"
-                                value={editInstitution}
-                                onChange={(e) => setEditInstitution(e.target.value)}
-                                placeholder="e.g. Chase"
-                                className="block w-full h-[32px] rounded-md border border-gray-300 px-2 text-sm"
-                              />
+                              <select
+                                value={editInstitutionCustom ? '__other__' : (editInstitution || '')}
+                                onChange={(e) => {
+                                  if (e.target.value === '__other__') {
+                                    setEditInstitutionCustom(true);
+                                    setEditInstitution('');
+                                  } else {
+                                    setEditInstitutionCustom(false);
+                                    setEditInstitution(e.target.value);
+                                  }
+                                }}
+                                className="block w-full h-[32px] rounded-md border border-gray-300 px-2 text-sm bg-white"
+                              >
+                                <option value="">— Select institution —</option>
+                                {(['bank', 'credit_card', 'investment'] as const).map((group) => (
+                                  <optgroup key={group} label={INSTITUTION_GROUP_LABELS[group]}>
+                                    {KNOWN_INSTITUTIONS.filter((i) => i.group === group).map((i) => (
+                                      <option key={i.name} value={i.name}>{i.name}</option>
+                                    ))}
+                                  </optgroup>
+                                ))}
+                                <option value="__other__">Other (specify)…</option>
+                              </select>
+                              {editInstitutionCustom && (
+                                <input
+                                  type="text"
+                                  value={editInstitution}
+                                  onChange={(e) => setEditInstitution(e.target.value)}
+                                  placeholder="Institution name"
+                                  autoFocus
+                                  className="block w-full h-[32px] rounded-md border border-gray-300 px-2 text-sm mt-1"
+                                />
+                              )}
                             </div>
                             <div className="space-y-1">
                               <label className="block text-xs font-medium text-gray-600">Last 4 digits</label>
@@ -1057,7 +1207,6 @@ export function AccountsPage() {
                             <div className="space-y-1">
                               <label className="block text-xs font-medium text-gray-600">
                                 Balance as of
-                                <span className="ml-1 font-normal text-gray-400">— ignore older transactions</span>
                               </label>
                               <input
                                 type="date"
@@ -1065,6 +1214,7 @@ export function AccountsPage() {
                                 onChange={(e) => setEditBalanceAsOf(e.target.value)}
                                 className="block w-full h-[32px] rounded-md border border-gray-300 px-2 text-sm"
                               />
+                              <p className="text-xs text-gray-400">Enter the balance at end of this date; transactions on or before it are treated as already included.</p>
                             </div>
                           </div>
                           {editError && <p className="text-xs text-red-600">{editError}</p>}
@@ -1107,7 +1257,7 @@ export function AccountsPage() {
               {shared.map((acct) => (
                 <div key={acct.id} className="flex items-center justify-between px-5 py-3 gap-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    <BankIcon currency={acct.currency} />
+                    <InstitutionLogo institution={acct.institution} name={acct.name} />
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate">
                         {acct.name}{' '}

@@ -9,7 +9,8 @@ raise the conflict rather than silently diverging.
 > All Phase 1 epics are complete. Next: **Wave 7 — Epic 9 (BYOK AI Categorization)**. Epic 11
 > (Rental Investment Tracking) is **Phase 2** — deferred. See the **"Status & Next Up"** section at the top of
 > `IMPLEMENTATION_PLAN.md` for the full ordered work list.
-> **Deployment is local-first — do not stand up a hosted environment yet** (IMPLEMENTATION_PLAN §5.2).
+> **Deployment:** local-first for dev; a **GCP staging** environment is being stood up now — see
+> [`docs/gcp-hosting.md`](./docs/gcp-hosting.md) (runbook + CI/CD) and IMPLEMENTATION_PLAN §5.2.
 
 ---
 
@@ -188,3 +189,5 @@ Full breakdown + the ordered next-up list in [`IMPLEMENTATION_PLAN.md`](./IMPLEM
 - `docs/feature-breakdown.docx`, `docs/discovery-brief.docx` — product rationale and phasing.
 - `docs/ai-features-and-architecture.html`, `docs/roadmap.html` — Phase 2/3 direction (don't build now,
   but don't foreclose).
+- `docs/gcp-hosting.md` — GCP migration runbook + CI/CD pipeline (Cloud Run, Neon, WIF, staging→prod).
+- `docs/development-setup.md` — local dev setup, the `AUTH_GATE` flag, dev/test databases.

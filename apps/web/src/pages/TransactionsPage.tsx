@@ -8,6 +8,13 @@ type Household = { id: string; name: string };
 type Account = { id: string; name: string };
 type Category = { id: string; name: string; color: string | null; parentId: string | null; kind?: string; children?: Category[] };
 
+type TransferPairInfo = {
+  pairId: string;
+  counterpartTxId: string;
+  counterpartAccountId: string;
+  counterpartAccountName: string;
+};
+
 type TransactionItem = {
   id: string;
   accountId: string;
@@ -20,10 +27,13 @@ type TransactionItem = {
   categoryName: string | null;
   categoryColor: string | null;
   isExcluded: boolean;
+  externalTransfer: boolean;
   hasSplit: boolean;
   splits: Array<{ id: string; categoryId: string | null; categoryName: string | null; amountMinor: number }>;
   dedupHash: string;
   createdAt: string;
+  transferPair: TransferPairInfo | null;
+  awaitingCounterpartAccount: { id: string; name: string } | null;
 };
 
 type TxListResponse = {
@@ -133,6 +143,7 @@ export function TransactionsPage() {
   const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
+  const [hideLinked, setHideLinked] = useState(false);
   const LIMIT = 50;
 
   function toggleSort(field: 'date' | 'amount') {
@@ -176,12 +187,12 @@ export function TransactionsPage() {
         p.set('categoryIds', filterCategories.join(','));
       }
     }
-    // Don't apply date range on the Needs Review tab — uncategorized transactions
-    // can be from any import period and users need to see all of them at once.
+    // Don't apply date range on the Needs Review tab
     if (tab !== 'uncategorized') {
       if (filterFrom) p.set('from', filterFrom);
       if (filterTo) p.set('to', filterTo);
     }
+    if (hideLinked) p.set('hideLinked', 'true');
     p.set('sortBy', sortBy);
     p.set('sortDir', sortDir);
     p.set('page', String(page));
@@ -251,6 +262,39 @@ export function TransactionsPage() {
     },
   });
 
+  // ── Per-row routing (Needs routing tab) ─────────────────────────────────
+  const [routingTxId, setRoutingTxId] = useState<string | null>(null);
+  const [routingSelection, setRoutingSelection] = useState<string>('');
+  const [routingSubmitting, setRoutingSubmitting] = useState(false);
+  const [routingError, setRoutingError] = useState('');
+
+  async function saveRowRoute(tx: TransactionItem) {
+    if (!household) return;
+    setRoutingSubmitting(true);
+    setRoutingError('');
+    try {
+      await api.post(`/households/${household.id}/transactions/transfer-routes`, [
+        {
+          txId: tx.id,
+          sourceAccountId: tx.accountId,
+          merchantMatch: tx.merchant ?? '',
+          counterpartAccountId: routingSelection === 'external' ? null : routingSelection || null,
+        },
+      ]);
+      setRoutingTxId(null);
+      setRoutingSelection('');
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['transactions'] }),
+        qc.invalidateQueries({ queryKey: ['accounts', household.id] }),
+        qc.invalidateQueries({ queryKey: ['accounts-flat'] }),
+      ]);
+    } catch (err) {
+      setRoutingError(err instanceof ApiException ? err.message : 'Failed to save route.');
+    } finally {
+      setRoutingSubmitting(false);
+    }
+  }
+
   // ── Recategorize panel ───────────────────────────────────────────────────
   const [recatTx, setRecatTx] = useState<TransactionItem | null>(null);
   const [recatCatId, setRecatCatId] = useState<string | null>(null);
@@ -311,11 +355,22 @@ export function TransactionsPage() {
         { categoryId: recatCatId, createRule: recatCreateRule },
       );
     },
-    onSuccess: () => {
+    onSuccess: (updatedTx) => {
       qc.invalidateQueries({ queryKey: ['transactions'] });
       qc.invalidateQueries({ queryKey: ['transactions-uncat-count'] });
       qc.invalidateQueries({ queryKey: ['uncategorized-count'] });
       setRecatTx(null);
+      // Auto-open routing panel when transaction is newly set to Transfer with no existing routing
+      if (
+        categoryKind(updatedTx.categoryId) === 'transfer' &&
+        !updatedTx.transferPair &&
+        !updatedTx.awaitingCounterpartAccount &&
+        !updatedTx.externalTransfer
+      ) {
+        setRoutingTxId(updatedTx.id);
+        setRoutingSelection('');
+        setRoutingError('');
+      }
     },
     onError: (err) => setRecatError(err instanceof ApiException ? err.message : 'Failed to save.'),
   });
@@ -381,7 +436,7 @@ export function TransactionsPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-wrap">
           {([
             ['uncategorized', 'Needs review'],
             ['categorized', 'Categorized'],
@@ -411,6 +466,19 @@ export function TransactionsPage() {
               )}
             </button>
           ))}
+
+          {/* Hide linked transfers toggle — shown on All tab when not filtering by account */}
+          {activeTab === 'all' && (
+            <label className="ml-auto flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={hideLinked}
+                onChange={(e) => { setHideLinked(e.target.checked); setPage(1); }}
+                className="rounded"
+              />
+              Hide linked transfers
+            </label>
+          )}
         </div>
 
         {/* Uncategorized tab banner with Auto-classify */}
@@ -627,7 +695,7 @@ export function TransactionsPage() {
                             Split ({tx.splits.length})
                           </button>
                         ) : (
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <CategoryPill
                               name={tx.categoryName}
                               color={tx.categoryColor}
@@ -635,6 +703,30 @@ export function TransactionsPage() {
                             />
                             {tx.isExcluded && (
                               <span title="Excluded from budgets & reports" className="text-gray-400 text-xs">⊘</span>
+                            )}
+                            {tx.transferPair && (
+                              <span
+                                title={`Linked to ${tx.transferPair.counterpartAccountName}`}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              >
+                                ↔ {tx.transferPair.counterpartAccountName}
+                              </span>
+                            )}
+                            {!tx.transferPair && tx.awaitingCounterpartAccount && (
+                              <span
+                                title={`Will auto-link when ${tx.awaitingCounterpartAccount.name} statement is uploaded`}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500 border border-gray-200"
+                              >
+                                ⏳ {tx.awaitingCounterpartAccount.name}
+                              </span>
+                            )}
+                            {!tx.transferPair && !tx.awaitingCounterpartAccount && tx.externalTransfer && (
+                              <span
+                                title="Transfer to/from an external account not tracked in this app"
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs bg-orange-50 text-orange-600 border border-orange-200"
+                              >
+                                External
+                              </span>
                             )}
                           </div>
                         )}
@@ -644,22 +736,106 @@ export function TransactionsPage() {
                       }`}>
                         {formatAmount(tx.amountMinor, tx.currency)}
                       </td>
-                      <td className="px-2 py-2.5 w-8">
-                        <button
-                          title="Delete transaction"
-                          className="text-gray-300 hover:text-red-500 transition-colors"
-                          onClick={() => {
-                            if (confirm(`Delete "${tx.merchant ?? 'this transaction'}" on ${formatDate(tx.postedDate)}? This cannot be undone.`)) {
-                              deleteMutation.mutate(tx.id);
-                            }
-                          }}
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                            <path fillRule="evenodd" d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35l.815-8.15h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5A.75.75 0 0 1 9.95 6Z" clipRule="evenodd" />
-                          </svg>
-                        </button>
+                      <td className="px-2 py-2.5 w-20">
+                        <div className="flex items-center gap-1 justify-end">
+                          {/* Route button on all Transfer-category rows */}
+                          {categoryKind(tx.categoryId) === 'transfer' && (
+                            <button
+                              title={routingTxId === tx.id
+                                ? 'Cancel'
+                                : (tx.transferPair || tx.awaitingCounterpartAccount || tx.externalTransfer)
+                                  ? 'Change transfer routing'
+                                  : 'Route this transfer'}
+                              onClick={() => {
+                                if (routingTxId === tx.id) {
+                                  setRoutingTxId(null);
+                                  setRoutingSelection('');
+                                  setRoutingError('');
+                                } else {
+                                  setRoutingTxId(tx.id);
+                                  setRoutingSelection('');
+                                  setRoutingError('');
+                                  setRecatTx(null);
+                                }
+                              }}
+                              className={`text-xs px-1.5 py-0.5 rounded font-medium transition-colors ${
+                                routingTxId === tx.id
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : 'text-blue-600 hover:bg-blue-50'
+                              }`}
+                            >
+                              {routingTxId === tx.id
+                                ? 'Cancel'
+                                : (tx.transferPair || tx.awaitingCounterpartAccount || tx.externalTransfer)
+                                  ? 'Change'
+                                  : 'Route'}
+                            </button>
+                          )}
+                          <button
+                            title="Delete transaction"
+                            className="text-gray-300 hover:text-red-500 transition-colors"
+                            onClick={() => {
+                              if (confirm(`Delete "${tx.merchant ?? 'this transaction'}" on ${formatDate(tx.postedDate)}? This cannot be undone.`)) {
+                                deleteMutation.mutate(tx.id);
+                              }
+                            }}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                              <path fillRule="evenodd" d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35l.815-8.15h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5A.75.75 0 0 1 9.95 6Z" clipRule="evenodd" />
+                            </svg>
+                          </button>
+                        </div>
                       </td>
                     </tr>
+
+                    {/* Routing panel — inline below Transfer row */}
+                    {routingTxId === tx.id && (
+                      <tr key={`${tx.id}-routing`}>
+                        <td colSpan={6} className="px-4 py-0">
+                          <div className="border border-blue-100 bg-blue-50 rounded-lg px-4 py-3 mb-2">
+                            <p className="text-xs font-semibold text-gray-800 mb-2">
+                              {(tx.transferPair || tx.awaitingCounterpartAccount || tx.externalTransfer)
+                                ? 'Change routing'
+                                : 'Route transfer'} · {tx.merchant ?? 'this transaction'}
+                            </p>
+                            <p className="text-xs text-gray-500 mb-3">
+                              {(tx.transferPair || tx.awaitingCounterpartAccount || tx.externalTransfer)
+                                ? 'Select a new account — the existing link will be removed and this rule updated.'
+                                : 'Where did this transfer come from or go to? We\'ll remember this for future imports.'}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <select
+                                value={routingSelection}
+                                onChange={(e) => setRoutingSelection(e.target.value)}
+                                className="h-[30px] rounded-md border border-gray-300 px-2 text-xs bg-white min-w-[200px]"
+                              >
+                                <option value="">— Select account or ignore —</option>
+                                {accounts
+                                  .filter((a) => a.id !== tx.accountId)
+                                  .map((a) => (
+                                    <option key={a.id} value={a.id}>{a.name}</option>
+                                  ))}
+                                <option value="external">External / not tracked (ignore)</option>
+                              </select>
+                              <button
+                                onClick={() => saveRowRoute(tx)}
+                                disabled={!routingSelection || routingSubmitting}
+                                className="h-[30px] px-3 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40 whitespace-nowrap"
+                              >
+                                {routingSubmitting ? 'Saving…' : 'Save'}
+                              </button>
+                              <button
+                                onClick={() => { setRoutingTxId(null); setRoutingSelection(''); setRoutingError(''); }}
+                                className="h-[30px] px-3 text-xs text-gray-500 hover:text-gray-700"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                            {routingError && <p className="text-xs text-red-600 mt-1">{routingError}</p>}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
 
                     {/* Recategorize panel — inline below the row */}
                     {recatTx?.id === tx.id && (

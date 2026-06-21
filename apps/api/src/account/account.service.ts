@@ -35,10 +35,16 @@ type AccountRow = {
   createdAt: Date;
 };
 
-// txSumMinor = SUM of transactions on/after balanceAsOf (or all if no cutoff).
-// balanceMinor in DB = opening/initial balance set by the user.
-// Displayed balance = openingBalance + txSumMinor.
-function toAccountResponse(a: AccountRow, txSumMinor = 0): AccountResponse {
+// Transactions use a unified sign: money into the account = positive, money out = negative.
+// For asset accounts (checking, savings): balance = opening + tx_sum (charges reduce balance).
+// For liability accounts (credit_card, loan, mortgage): transactions are stored with the same
+// sign convention (charges = negative expense, payments = positive income), but this means
+// charges REDUCE the stored balance when added — the opposite of what's owed. So we negate
+// the tx_sum for liabilities: owed = opening + (-tx_sum) → charges increase what's owed.
+const LIABILITY_ACCOUNT_TYPES = new Set(['credit_card', 'loan', 'mortgage']);
+
+function toAccountResponse(a: AccountRow, txSumMinor = 0, lastTxDate?: Date | null): AccountResponse {
+  const delta = LIABILITY_ACCOUNT_TYPES.has(a.type) ? -txSumMinor : txSumMinor;
   return {
     id: a.id,
     name: a.name,
@@ -46,8 +52,10 @@ function toAccountResponse(a: AccountRow, txSumMinor = 0): AccountResponse {
     source: a.source as AccountResponse['source'],
     institution: a.institution,
     mask: a.mask,
-    balanceMinor: a.balanceMinor + txSumMinor,
+    balanceMinor: a.balanceMinor + delta,
+    openingBalanceMinor: a.balanceMinor,
     balanceAsOfDate: a.balanceAsOf ? a.balanceAsOf.toISOString().slice(0, 10) : null,
+    lastTransactionDate: lastTxDate ? lastTxDate.toISOString().slice(0, 10) : null,
     currency: a.currency,
     visibility: a.visibility as AccountResponse['visibility'],
     ownerUserId: a.ownerUserId,
@@ -114,17 +122,19 @@ export class AccountService {
 
     // Sum all transactions per account, then subtract pre-cutoff amounts for
     // accounts that have a balanceAsOf date set.
-    const txSums = await prisma.transaction.groupBy({
+    const txAggs = await prisma.transaction.groupBy({
       by: ['accountId'],
       where: { accountId: { in: accountIds } },
       _sum: { amountMinor: true },
+      _max: { postedDate: true },
     });
-    const txSumMap = new Map(txSums.map((s) => [s.accountId, s._sum.amountMinor ?? 0]));
+    const txSumMap = new Map(txAggs.map((s) => [s.accountId, s._sum.amountMinor ?? 0]));
+    const txMaxDateMap = new Map(txAggs.map((s) => [s.accountId, s._max.postedDate ?? null]));
 
     const accountsWithCutoff = allAccounts.filter((a) => a.balanceAsOf !== null);
     for (const a of accountsWithCutoff) {
       const pre = await prisma.transaction.aggregate({
-        where: { accountId: a.id, postedDate: { lt: a.balanceAsOf! } },
+        where: { accountId: a.id, postedDate: { lte: a.balanceAsOf! } },
         _sum: { amountMinor: true },
       });
       txSumMap.set(a.id, (txSumMap.get(a.id) ?? 0) - (pre._sum.amountMinor ?? 0));
@@ -137,10 +147,11 @@ export class AccountService {
 
     for (const a of allAccounts) {
       const txSum = txSumMap.get(a.id) ?? 0;
+      const lastTxDate = txMaxDateMap.get(a.id) ?? null;
       if (a.ownerUserId === userId) {
-        own.push(toAccountResponse(a, txSum));
+        own.push(toAccountResponse(a, txSum, lastTxDate));
       } else if (canViewLineItems(scope, a.id) || scope.balanceOnlyAccountIds.has(a.id)) {
-        shared.push(toAccountResponse(a, txSum));
+        shared.push(toAccountResponse(a, txSum, lastTxDate));
       }
     }
 
@@ -171,11 +182,17 @@ export class AccountService {
     const txAgg = await prisma.transaction.aggregate({
       where: {
         accountId,
-        ...(account.balanceAsOf ? { postedDate: { gte: account.balanceAsOf } } : {}),
+        ...(account.balanceAsOf ? { postedDate: { gt: account.balanceAsOf } } : {}),
       },
       _sum: { amountMinor: true },
+      _max: { postedDate: true },
     });
-    return toAccountResponse(account, txAgg._sum.amountMinor ?? 0);
+    // For lastTransactionDate, check across ALL transactions (not just post-cutoff)
+    const lastTxAll = account.balanceAsOf
+      ? await prisma.transaction.aggregate({ where: { accountId }, _max: { postedDate: true } })
+      : null;
+    const lastTxDate = lastTxAll?._max.postedDate ?? txAgg._max.postedDate ?? null;
+    return toAccountResponse(account, txAgg._sum.amountMinor ?? 0, lastTxDate);
   }
 
   async updateAccount(

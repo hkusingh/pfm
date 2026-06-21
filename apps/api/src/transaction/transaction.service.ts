@@ -2,23 +2,71 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { prisma } from '@pfm/db';
 import { buildScope, canViewLineItems } from '@pfm/core';
 import { merchantRuleKey, merchantSimilarityScore, MERCHANT_MATCH_THRESHOLD } from '@pfm/core';
-import type { TransactionListItem, TransactionListResponse, RecategorizeTxBody, ApplyRulesResponse, PutSplitsBody, ExcludeTransactionBody } from '@pfm/contracts';
+import type { TransactionListItem, TransactionListResponse, RecategorizeTxBody, ApplyRulesResponse, PutSplitsBody, ExcludeTransactionBody, TransferPairResponse, TransferRouteResponse, TransferRouteBody, NeedsRoutingItem } from '@pfm/contracts';
 import { TRANSFER_PATTERNS } from '../category/category.service';
+
+// Prisma include object shared by all transaction queries
+const TX_INCLUDE = {
+  account: { select: { name: true } },
+  category: { select: { name: true, color: true } },
+  splits: { include: { category: { select: { name: true, color: true } } } },
+  transferPairAsDebit: {
+    select: {
+      id: true,
+      creditTxId: true,
+      creditTx: { select: { accountId: true, account: { select: { name: true } } } },
+    },
+  },
+  transferPairAsCredit: {
+    select: {
+      id: true,
+      debitTxId: true,
+      debitTx: { select: { accountId: true, account: { select: { name: true } } } },
+    },
+  },
+  awaitingCounterpart: { select: { id: true, name: true } },
+} as const;
 
 // Shared shape returned by all Prisma queries that include account/category/splits
 type TxWithIncludes = {
   id: string; accountId: string; postedDate: Date; merchant: string | null;
   amountMinor: number; currency: string; categoryId: string | null;
-  hasSplit: boolean; isExcluded: boolean; dedupHash: string; createdAt: Date;
+  hasSplit: boolean; isExcluded: boolean; externalTransfer: boolean; dedupHash: string; createdAt: Date;
   account: { name: string };
   category: { name: string; color: string | null } | null;
   splits: Array<{
     id: string; categoryId: string | null; amountMinor: number;
     category: { name: string; color: string | null } | null;
   }>;
+  transferPairAsDebit: {
+    id: string; creditTxId: string;
+    creditTx: { accountId: string; account: { name: string } };
+  } | null;
+  transferPairAsCredit: {
+    id: string; debitTxId: string;
+    debitTx: { accountId: string; account: { name: string } };
+  } | null;
+  awaitingCounterpart: { id: string; name: string } | null;
 };
 
 function txToListItem(t: TxWithIncludes): TransactionListItem {
+  let transferPair: TransactionListItem['transferPair'] = null;
+  if (t.transferPairAsDebit) {
+    transferPair = {
+      pairId: t.transferPairAsDebit.id,
+      counterpartTxId: t.transferPairAsDebit.creditTxId,
+      counterpartAccountId: t.transferPairAsDebit.creditTx.accountId,
+      counterpartAccountName: t.transferPairAsDebit.creditTx.account.name,
+    };
+  } else if (t.transferPairAsCredit) {
+    transferPair = {
+      pairId: t.transferPairAsCredit.id,
+      counterpartTxId: t.transferPairAsCredit.debitTxId,
+      counterpartAccountId: t.transferPairAsCredit.debitTx.accountId,
+      counterpartAccountName: t.transferPairAsCredit.debitTx.account.name,
+    };
+  }
+
   return {
     id: t.id,
     accountId: t.accountId,
@@ -32,6 +80,7 @@ function txToListItem(t: TxWithIncludes): TransactionListItem {
     categoryColor: t.category?.color ?? null,
     hasSplit: t.hasSplit,
     isExcluded: t.isExcluded,
+    externalTransfer: t.externalTransfer,
     splits: t.splits.map((s) => ({
       id: s.id,
       categoryId: s.categoryId,
@@ -41,6 +90,10 @@ function txToListItem(t: TxWithIncludes): TransactionListItem {
     })),
     dedupHash: t.dedupHash,
     createdAt: t.createdAt.toISOString(),
+    transferPair,
+    awaitingCounterpartAccount: t.awaitingCounterpart
+      ? { id: t.awaitingCounterpart.id, name: t.awaitingCounterpart.name }
+      : null,
   };
 }
 
@@ -56,6 +109,7 @@ export interface ListTransactionsQuery {
   limit?: number;
   sortBy?: 'date' | 'amount';
   sortDir?: 'asc' | 'desc';
+  hideLinked?: boolean;   // exclude the credit side of linked transfer pairs
 }
 
 @Injectable()
@@ -95,6 +149,8 @@ export class TransactionService {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {
       accountId: { in: accountFilter },
+      // hideLinked: exclude credit-side transactions that are already linked to a debit in another account
+      ...(query.hideLinked ? { transferPairAsCredit: { is: null } } : {}),
     };
     if (query.search) {
       where.merchant = { contains: query.search, mode: 'insensitive' };
@@ -154,11 +210,7 @@ export class TransactionService {
           : [{ postedDate: query.sortDir === 'asc' ? 'asc' : 'desc' }, { createdAt: query.sortDir === 'asc' ? 'asc' : 'desc' }],
         skip: (page - 1) * limit,
         take: limit,
-        include: {
-          account: { select: { name: true } },
-          category: { select: { name: true, color: true } },
-          splits: { include: { category: { select: { name: true, color: true } } } },
-        },
+        include: TX_INCLUDE,
       }),
     ]);
 
@@ -319,15 +371,26 @@ export class TransactionService {
       await prisma.transactionSplit.deleteMany({ where: { transactionId: txId } });
     }
 
-    // Update category
+    // When moving a transaction OUT of the Transfer category, clear all transfer-linking state
+    const oldCat = tx.categoryId ? await prisma.category.findUnique({ where: { id: tx.categoryId } }) : null;
+    const newCat = body.categoryId ? await prisma.category.findUnique({ where: { id: body.categoryId } }) : null;
+    const leavingTransfer = oldCat?.kind === 'transfer' && newCat?.kind !== 'transfer';
+    if (leavingTransfer) {
+      // Remove pair (cascade deletes both sides' pair record)
+      await prisma.transferPair.deleteMany({
+        where: { OR: [{ debitTxId: txId }, { creditTxId: txId }] },
+      });
+    }
+
+    // Update category — also clear transfer state when leaving Transfer
     const updated = await prisma.transaction.update({
       where: { id: txId },
-      data: { categoryId: body.categoryId, hasSplit: false },
-      include: {
-        account: { select: { name: true } },
-        category: { select: { name: true, color: true } },
-        splits: { include: { category: { select: { name: true, color: true } } } },
+      data: {
+        categoryId: body.categoryId,
+        hasSplit: false,
+        ...(leavingTransfer ? { awaitingCounterpartAccountId: null, externalTransfer: false } : {}),
       },
+      include: TX_INCLUDE,
     });
 
     // Optionally create/update a category rule for this merchant
@@ -423,11 +486,7 @@ export class TransactionService {
     const updated = await prisma.transaction.update({
       where: { id: txId },
       data: { isExcluded: body.isExcluded },
-      include: {
-        account: { select: { name: true } },
-        category: { select: { name: true, color: true } },
-        splits: { include: { category: { select: { name: true, color: true } } } },
-      },
+      include: TX_INCLUDE,
     });
 
     await prisma.auditLog.create({
@@ -473,9 +532,8 @@ export class TransactionService {
     const tx = await prisma.transaction.findUnique({
       where: { id: txId },
       include: {
+        ...TX_INCLUDE,
         account: { select: { id: true, name: true, householdId: true, ownerUserId: true, visibility: true } },
-        category: { select: { name: true, color: true } },
-        splits: { include: { category: { select: { name: true, color: true } } } },
       },
     });
     if (!tx || tx.account.householdId !== householdId) throw new NotFoundException('Transaction not found');
@@ -488,5 +546,333 @@ export class TransactionService {
     if (!canViewLineItems(scope, tx.accountId)) throw new NotFoundException('Transaction not found');
 
     return tx;
+  }
+
+  // ── Transfer pair: manual link / unlink ───────────────────────────────────
+
+  async linkTransferPair(
+    debitTxId: string,
+    creditTxId: string,
+    householdId: string,
+  ): Promise<TransferPairResponse> {
+    const [debit, credit] = await Promise.all([
+      prisma.transaction.findUnique({ where: { id: debitTxId }, include: { account: { select: { householdId: true } } } }),
+      prisma.transaction.findUnique({ where: { id: creditTxId }, include: { account: { select: { householdId: true } } } }),
+    ]);
+
+    if (!debit || debit.account.householdId !== householdId) throw new NotFoundException('Debit transaction not found');
+    if (!credit || credit.account.householdId !== householdId) throw new NotFoundException('Credit transaction not found');
+    if (debit.accountId === credit.accountId) throw new BadRequestException('Transactions must be in different accounts');
+    if (debit.amountMinor >= 0) throw new BadRequestException('debitTxId must be a negative (outflow) transaction');
+    if (credit.amountMinor <= 0) throw new BadRequestException('creditTxId must be a positive (inflow) transaction');
+    if (Math.abs(debit.amountMinor) !== credit.amountMinor) throw new BadRequestException('Amounts do not match');
+
+    const existing = await prisma.transferPair.findFirst({
+      where: { OR: [{ debitTxId }, { creditTxId }] },
+    });
+    if (existing) throw new BadRequestException('One or both transactions are already linked');
+
+    const pair = await prisma.transferPair.create({ data: { debitTxId, creditTxId } });
+    // Clear awaiting flags on both sides
+    await prisma.transaction.updateMany({
+      where: { id: { in: [debitTxId, creditTxId] } },
+      data: { awaitingCounterpartAccountId: null },
+    });
+
+    return { pairId: pair.id, debitTxId, creditTxId };
+  }
+
+  async unlinkTransferPair(pairId: string, householdId: string): Promise<void> {
+    const pair = await prisma.transferPair.findUnique({
+      where: { id: pairId },
+      include: { debitTx: { include: { account: { select: { householdId: true } } } } },
+    });
+    if (!pair || pair.debitTx.account.householdId !== householdId) throw new NotFoundException('Transfer pair not found');
+    await prisma.transferPair.delete({ where: { id: pairId } });
+  }
+
+  // ── Transfer routes: save / delete ────────────────────────────────────────
+
+  async createTransferRoutes(
+    routes: TransferRouteBody[],
+    householdId: string,
+    userId?: string,
+  ): Promise<TransferRouteResponse[]> {
+    const results: TransferRouteResponse[] = [];
+    for (const r of routes) {
+      // Validate account belongs to household
+      const src = await prisma.account.findFirst({ where: { id: r.sourceAccountId, householdId } });
+      if (!src) throw new NotFoundException(`Account ${r.sourceAccountId} not found`);
+      if (r.counterpartAccountId) {
+        const cpt = await prisma.account.findFirst({ where: { id: r.counterpartAccountId, householdId } });
+        if (!cpt) throw new NotFoundException(`Account ${r.counterpartAccountId} not found`);
+      }
+
+      // When re-routing a specific transaction, clear its existing transfer state first
+      if (r.txId) {
+        await prisma.transferPair.deleteMany({
+          where: { OR: [{ debitTxId: r.txId }, { creditTxId: r.txId }] },
+        });
+        await prisma.transaction.update({
+          where: { id: r.txId },
+          data: { awaitingCounterpartAccountId: null, externalTransfer: false },
+        });
+      }
+
+      const route = await prisma.transferRoute.upsert({
+        where: { sourceAccountId_merchantMatch: { sourceAccountId: r.sourceAccountId, merchantMatch: r.merchantMatch } },
+        create: { householdId, sourceAccountId: r.sourceAccountId, merchantMatch: r.merchantMatch, counterpartAccountId: r.counterpartAccountId ?? null },
+        update: { counterpartAccountId: r.counterpartAccountId ?? null },
+        include: { counterpartAccount: { select: { name: true } } },
+      });
+
+      results.push({
+        id: route.id,
+        sourceAccountId: route.sourceAccountId,
+        merchantMatch: route.merchantMatch,
+        counterpartAccountId: route.counterpartAccountId,
+        counterpartAccountName: route.counterpartAccount?.name ?? null,
+      });
+
+      // Apply this route immediately to existing unlinked transfer transactions.
+      // Primary path: if a specific txId was supplied (per-row routing from UI), target it directly.
+      // Fallback: broad merchant scan (case-insensitive) for any matching unlinked transactions.
+      const txsToApply: { id: string; accountId: string; amountMinor: number; postedDate: Date }[] = [];
+
+      if (r.txId) {
+        const specific = await prisma.transaction.findFirst({
+          where: {
+            id: r.txId,
+            accountId: r.sourceAccountId,
+            transferPairAsDebit: null,
+            transferPairAsCredit: null,
+            awaitingCounterpartAccountId: null,
+            externalTransfer: false,
+          },
+        });
+        if (specific) txsToApply.push(specific);
+      }
+
+      // Also scan for any other unlinked transactions that match the merchant pattern
+      if (r.merchantMatch) {
+        const broad = await prisma.transaction.findMany({
+          where: {
+            accountId: r.sourceAccountId,
+            merchantNormalized: { contains: r.merchantMatch.toLowerCase(), mode: 'insensitive' },
+            ...(r.txId ? { id: { not: r.txId } } : {}),
+            transferPairAsDebit: null,
+            transferPairAsCredit: null,
+            awaitingCounterpartAccountId: null,
+            externalTransfer: false,
+          },
+        });
+        txsToApply.push(...broad);
+      }
+
+      for (const tx of txsToApply) {
+        if (!r.counterpartAccountId) {
+          await prisma.transaction.update({ where: { id: tx.id }, data: { externalTransfer: true } });
+        } else {
+          await this.tryLink(tx, r.counterpartAccountId);
+        }
+      }
+
+      // Ensure future imports with this merchant are auto-categorized as Transfer so that
+      // resolveTransferLinks picks them up during the import commit step.
+      if (userId && r.merchantMatch) {
+        const transferCat = await prisma.category.findFirst({ where: { householdId, kind: 'transfer', isSystem: true } });
+        if (transferCat) {
+          const ruleKey = r.merchantMatch.toLowerCase().trim();
+          const existingRule = await prisma.categoryRule.findFirst({ where: { householdId, merchantMatch: ruleKey } });
+          if (existingRule) {
+            await prisma.categoryRule.update({ where: { id: existingRule.id }, data: { categoryId: transferCat.id } });
+          } else {
+            await prisma.categoryRule.create({
+              data: { householdId, merchantMatch: ruleKey, categoryId: transferCat.id, createdByUserId: userId },
+            });
+          }
+        }
+      }
+    }
+    return results;
+  }
+
+  async deleteTransferRoute(routeId: string, householdId: string): Promise<void> {
+    const route = await prisma.transferRoute.findFirst({ where: { id: routeId, householdId } });
+    if (!route) throw new NotFoundException('Transfer route not found');
+    await prisma.transferRoute.delete({ where: { id: routeId } });
+  }
+
+  // Apply all known routing rules to every currently-unrouted transfer transaction in the household.
+  // Used by the "Auto-route all" action on the Needs Routing tab.
+  async resolveAllRoutes(householdId: string): Promise<{ resolved: number }> {
+    const transferCat = await prisma.category.findFirst({ where: { householdId, kind: 'transfer', isSystem: true } });
+    if (!transferCat) return { resolved: 0 };
+
+    const unroutedTxs = await prisma.transaction.findMany({
+      where: {
+        account: { householdId },
+        categoryId: transferCat.id,
+        transferPairAsDebit: null,
+        transferPairAsCredit: null,
+        awaitingCounterpartAccountId: null,
+        externalTransfer: false,
+      },
+      select: { id: true },
+    });
+
+    if (unroutedTxs.length === 0) return { resolved: 0 };
+
+    const before = unroutedTxs.length;
+    await this.resolveTransferLinks(householdId, unroutedTxs.map((t) => t.id));
+
+    // Count how many are now resolved (have a pair, awaiting, or external flag)
+    const stillUnrouted = await prisma.transaction.count({
+      where: {
+        id: { in: unroutedTxs.map((t) => t.id) },
+        transferPairAsDebit: null,
+        transferPairAsCredit: null,
+        awaitingCounterpartAccountId: null,
+        externalTransfer: false,
+      },
+    });
+    return { resolved: before - stillUnrouted };
+  }
+
+  // ── Transfer resolution — called by import service post-insert ────────────
+
+  async resolveTransferLinks(
+    householdId: string,
+    newTxIds: string[],
+  ): Promise<NeedsRoutingItem[]> {
+    if (newTxIds.length === 0) return [];
+
+    const transferCat = await prisma.category.findFirst({ where: { householdId, kind: 'transfer', isSystem: true } });
+    if (!transferCat) return [];
+
+    const newTxs = await prisma.transaction.findMany({
+      where: { id: { in: newTxIds }, categoryId: transferCat.id },
+      include: { account: { select: { householdId: true } } },
+    });
+    if (newTxs.length === 0) return [];
+
+    const routes = await prisma.transferRoute.findMany({ where: { householdId } });
+    const needsRouting: NeedsRoutingItem[] = [];
+
+    for (const tx of newTxs) {
+      // Already linked — skip
+      const alreadyLinked = await prisma.transferPair.findFirst({
+        where: { OR: [{ debitTxId: tx.id }, { creditTxId: tx.id }] },
+      });
+      if (alreadyLinked) continue;
+
+      // Step B: check if any existing transaction is waiting for this account
+      const twoDay = 2 * 24 * 60 * 60 * 1000;
+      const dateFrom = new Date(tx.postedDate.getTime() - twoDay);
+      const dateTo = new Date(tx.postedDate.getTime() + twoDay);
+      const awaitingMatch = await prisma.transaction.findFirst({
+        where: {
+          awaitingCounterpartAccountId: tx.accountId,
+          amountMinor: -tx.amountMinor,
+          postedDate: { gte: dateFrom, lte: dateTo },
+          transferPairAsDebit: null,
+          transferPairAsCredit: null,
+        },
+      });
+      if (awaitingMatch) {
+        const [debitId, creditId] = tx.amountMinor > 0
+          ? [awaitingMatch.id, tx.id]
+          : [tx.id, awaitingMatch.id];
+        await prisma.transferPair.create({ data: { debitTxId: debitId, creditTxId: creditId } });
+        await prisma.transaction.updateMany({
+          where: { id: { in: [tx.id, awaitingMatch.id] } },
+          data: { awaitingCounterpartAccountId: null },
+        });
+        continue;
+      }
+
+      // Step A: apply known routing rules.
+      // Compare merchantNormalized (already lowercased/cleaned at import time) against
+      // the lowercased+trimmed merchantMatch so the comparison is case-insensitive and
+      // robust to whitespace differences between raw merchant strings.
+      const matchedRoute = routes.find((r) => {
+        if (r.sourceAccountId !== tx.accountId) return false;
+        const pattern = r.merchantMatch.toLowerCase().trim();
+        if (tx.merchantNormalized) return tx.merchantNormalized.includes(pattern);
+        if (tx.merchant) return tx.merchant.toLowerCase().includes(pattern);
+        return false;
+      });
+
+      if (matchedRoute) {
+        if (!matchedRoute.counterpartAccountId) {
+          // External / not tracked — mark so it disappears from "Needs routing" tab
+          await prisma.transaction.update({ where: { id: tx.id }, data: { externalTransfer: true } });
+          continue;
+        }
+        await this.tryLink(tx, matchedRoute.counterpartAccountId);
+        continue;
+      }
+
+      // Step C: no routing rule — collect for user assignment, with optional suggestion
+      const suggestion = await prisma.transaction.findFirst({
+        where: {
+          account: { householdId },
+          accountId: { not: tx.accountId },
+          amountMinor: -tx.amountMinor,
+          postedDate: { gte: dateFrom, lte: dateTo },
+          categoryId: transferCat.id,
+          transferPairAsDebit: null,
+          transferPairAsCredit: null,
+        },
+        include: { account: { select: { name: true } } },
+      });
+
+      needsRouting.push({
+        txId: tx.id,
+        postedDate: tx.postedDate.toISOString().slice(0, 10),
+        merchant: tx.merchant,
+        amountMinor: tx.amountMinor,
+        suggestedCounterpartAccountId: suggestion?.accountId ?? null,
+        suggestedCounterpartAccountName: suggestion?.account.name ?? null,
+      });
+    }
+
+    return needsRouting;
+  }
+
+  private async tryLink(
+    tx: { id: string; accountId: string; amountMinor: number; postedDate: Date },
+    counterpartAccountId: string,
+  ): Promise<void> {
+    const twoDay = 2 * 24 * 60 * 60 * 1000;
+    const dateFrom = new Date(tx.postedDate.getTime() - twoDay);
+    const dateTo = new Date(tx.postedDate.getTime() + twoDay);
+
+    const candidates = await prisma.transaction.findMany({
+      where: {
+        accountId: counterpartAccountId,
+        amountMinor: -tx.amountMinor,
+        postedDate: { gte: dateFrom, lte: dateTo },
+        transferPairAsDebit: null,
+        transferPairAsCredit: null,
+      },
+    });
+
+    if (candidates.length === 1) {
+      const [debitId, creditId] = tx.amountMinor < 0
+        ? [tx.id, candidates[0].id]
+        : [candidates[0].id, tx.id];
+      await prisma.transferPair.create({ data: { debitTxId: debitId, creditTxId: creditId } });
+      await prisma.transaction.updateMany({
+        where: { id: { in: [tx.id, candidates[0].id] } },
+        data: { awaitingCounterpartAccountId: null },
+      });
+    } else {
+      // Counterpart not yet imported (or ambiguous) — mark as awaiting
+      await prisma.transaction.update({
+        where: { id: tx.id },
+        data: { awaitingCounterpartAccountId: counterpartAccountId },
+      });
+    }
   }
 }

@@ -25,6 +25,8 @@ Recommended reading order:
 | 7 | [phase1-spec.md](./docs/phase1-spec.md) | Phase 1 PRD — requirements, acceptance criteria, edge cases |
 | 8 | [phase1-technical-design.html](./docs/phase1-technical-design.html) | Architecture, data model (ER), API surface, Plaid integration, visibility enforcement |
 | 9 | [phase1-epics-and-stories.md](./docs/phase1-epics-and-stories.md) | Sprint-ready epics & stories, structured for parallel development |
+| 10 | [gcp-hosting.md](./docs/gcp-hosting.md) | GCP migration runbook + CI/CD (Cloud Run, Neon, Workload Identity Federation, staging→prod) |
+| 11 | [development-setup.md](./docs/development-setup.md) | Local dev environment, the `AUTH_GATE` flag, dev/test databases |
 
 ## Key product decisions
 

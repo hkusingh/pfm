@@ -111,6 +111,7 @@ model Household {
   accounts       Account[]
   categories     Category[]
   categoryRules  CategoryRule[]
+  transferRoutes TransferRoute[]
   budgets        Budget[]
   sinkingFunds   SinkingFund[]
   importBatches  ImportBatch[]
@@ -212,10 +213,13 @@ model Account {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
-  household     Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  owner         User?         @relation(fields: [ownerUserId], references: [id])
-  transactions  Transaction[]
-  importBatches ImportBatch[]
+  household                   Household       @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  owner                       User?           @relation(fields: [ownerUserId], references: [id])
+  transactions                Transaction[]
+  importBatches               ImportBatch[]
+  transferRoutesAsSource      TransferRoute[] @relation("RouteSource")
+  transferRoutesAsCounterpart TransferRoute[] @relation("RouteCounterpart")
+  awaitingTransfers           Transaction[]   @relation("AwaitingCounterpart")
 
   @@index([householdId])
   @@index([ownerUserId])
@@ -245,16 +249,55 @@ model Transaction {
   hasSplit           Boolean   @default(false)
   isExcluded         Boolean   @default(false)
 
-  account     Account           @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  category    Category?         @relation(fields: [categoryId], references: [id])
-  sinkingFund SinkingFund?      @relation(fields: [sinkingFundId], references: [id])
-  importBatch ImportBatch?      @relation(fields: [importBatchId], references: [id])
-  splits      TransactionSplit[]
+  // Transfer linking — see docs/transfer-linking-design.md
+  awaitingCounterpartAccountId String?
+  externalTransfer             Boolean   @default(false) // true when routed to "External / not tracked"
+
+  account              Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  category             Category?          @relation(fields: [categoryId], references: [id])
+  sinkingFund          SinkingFund?       @relation(fields: [sinkingFundId], references: [id])
+  importBatch          ImportBatch?       @relation(fields: [importBatchId], references: [id])
+  splits               TransactionSplit[]
+  transferPairAsDebit  TransferPair?      @relation("DebitSide")
+  transferPairAsCredit TransferPair?      @relation("CreditSide")
+  awaitingCounterpart  Account?           @relation("AwaitingCounterpart", fields: [awaitingCounterpartAccountId], references: [id], onDelete: SetNull)
 
   @@unique([accountId, dedupHash])
   @@index([accountId])
   @@index([categoryId])
   @@index([postedDate])
+  @@index([awaitingCounterpartAccountId])
+}
+
+// ─── Transfer Linking ─────────────────────────────────────────────────────────
+
+// Links the debit side to the credit side of a tracked inter-account transfer.
+model TransferPair {
+  id         String   @id @default(cuid())
+  debitTxId  String   @unique
+  creditTxId String   @unique
+  createdAt  DateTime @default(now())
+
+  debitTx  Transaction @relation("DebitSide",  fields: [debitTxId],  references: [id], onDelete: Cascade)
+  creditTx Transaction @relation("CreditSide", fields: [creditTxId], references: [id], onDelete: Cascade)
+}
+
+// Remembers the user's routing decision for a transfer merchant pattern in a given account.
+// Applied automatically on future imports so the user is only prompted once per pattern.
+model TransferRoute {
+  id                   String   @id @default(cuid())
+  householdId          String
+  sourceAccountId      String
+  merchantMatch        String   // substring match against merchantNormalized
+  counterpartAccountId String?  // null = external / untracked
+  createdAt            DateTime @default(now())
+
+  household          Household @relation(fields: [householdId],          references: [id], onDelete: Cascade)
+  sourceAccount      Account   @relation("RouteSource",      fields: [sourceAccountId],      references: [id], onDelete: Cascade)
+  counterpartAccount Account?  @relation("RouteCounterpart", fields: [counterpartAccountId], references: [id], onDelete: SetNull)
+
+  @@unique([sourceAccountId, merchantMatch])
+  @@index([householdId])
 }
 
 // ─── Categories ───────────────────────────────────────────────────────────────

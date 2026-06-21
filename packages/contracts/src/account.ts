@@ -48,8 +48,10 @@ export const AccountResponseSchema = z.object({
   source: z.enum(['manual', 'import']),
   institution: z.string().nullable(),
   mask: z.string().nullable(),
-  balanceMinor: z.number().int(),
-  balanceAsOfDate: z.string().nullable(),
+  balanceMinor: z.number().int(),             // computed: opening + transactions (display)
+  openingBalanceMinor: z.number().int(),      // raw stored opening balance (used in edit form)
+  balanceAsOfDate: z.string().nullable(),     // opening-balance anchor date (used in edit form)
+  lastTransactionDate: z.string().nullable(), // date of most recent transaction (display as "as of")
   currency: z.string(),
   visibility: z.enum(VISIBILITY_KINDS),
   ownerUserId: z.string().nullable(),
