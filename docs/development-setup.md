@@ -62,6 +62,22 @@ To exercise the real invite/MFA flow locally, set `AUTH_GATE=true` in `.env`, re
 issue yourself a signup invite from the admin area (the seeded site admin can do this once it has a
 password — see below).
 
+## Environments
+
+PFM uses one codebase across two environments that differ **only by configuration**, never by code:
+
+| | **Local dev** (this guide) | **Beta / test** ([Railway.md](./Railway.md)) | **Production** (later, [gcp-hosting.md](./gcp-hosting.md)) |
+|---|---|---|---|
+| Purpose | fast iteration | invited testers | real users |
+| `AUTH_GATE` | `false` (no invite/MFA) | `true` (invite-only + MFA) | `true` |
+| Host | your machine | Railway (API + web + Postgres) | GCP Cloud Run + Neon |
+| Email | logged to stdout | real (Resend) | real (Resend) |
+| Secrets | generated placeholders in `.env` | Railway service variables | GCP Secret Manager |
+| Deploys from | n/a | push to `main` | release tag |
+
+The same container images run on Railway and GCP — Railway is the beta stand-in until production scale
+is needed. To stand up the beta environment, follow [**Railway.md**](./Railway.md).
+
 ## Databases
 
 | Database | Used by | Connection var |

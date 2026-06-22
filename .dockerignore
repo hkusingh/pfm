@@ -11,8 +11,9 @@ node_modules
 dist
 **/dist
 
-# Web app — not needed for the API image
-apps/web
+# Note: apps/web is intentionally NOT ignored — the web image
+# (apps/web/Dockerfile) builds from this same root context. The API
+# Dockerfile simply doesn't COPY apps/web, so the API image is unaffected.
 
 # Test/dev tooling
 packages/testing/src
