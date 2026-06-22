@@ -9,6 +9,8 @@
 
 # ── Stage 1: build ────────────────────────────────────────────────────────────
 FROM node:20-slim AS builder
+# OpenSSL is needed because @pfm/db's postinstall runs `prisma generate`.
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@9.14.4 --activate
 WORKDIR /app
 
@@ -22,6 +24,10 @@ COPY packages/db/package.json        ./packages/db/
 COPY packages/testing/package.json   ./packages/testing/
 COPY packages/ui/package.json        ./packages/ui/
 COPY apps/web/package.json           ./apps/web/
+
+# @pfm/db's postinstall runs `prisma generate` during install (it's in the
+# workspace), which needs the schema present — copy it before installing.
+COPY packages/db/prisma ./packages/db/prisma
 
 RUN pnpm install --frozen-lockfile
 

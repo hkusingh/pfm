@@ -1,6 +1,8 @@
 # ── Stage 1: install + build ──────────────────────────────────────────────────
 FROM node:20-slim AS builder
 
+# OpenSSL is required by Prisma's engines (generate + query engine).
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@9.14.4 --activate
 
 WORKDIR /app
@@ -14,6 +16,10 @@ COPY packages/db/package.json        ./packages/db/
 COPY packages/testing/package.json   ./packages/testing/
 COPY packages/ui/package.json        ./packages/ui/
 COPY apps/api/package.json           ./apps/api/
+
+# @pfm/db's postinstall runs `prisma generate`, which needs the schema present
+# during install — copy it before installing so the lifecycle script succeeds.
+COPY packages/db/prisma ./packages/db/prisma
 
 RUN pnpm install --frozen-lockfile
 
@@ -30,6 +36,8 @@ RUN pnpm turbo build --filter=@pfm/api...
 # ── Stage 2: production image ─────────────────────────────────────────────────
 FROM node:20-slim AS runner
 
+# OpenSSL is required by Prisma's query engine at runtime.
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@9.14.4 --activate
 
 WORKDIR /app
