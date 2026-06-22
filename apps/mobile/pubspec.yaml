@@ -1,0 +1,41 @@
+name: pfm_mobile
+description: PFM — Personal Finance Manager mobile app
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # HTTP + auth
+  dio: ^5.4.0
+  flutter_secure_storage: ^9.2.2
+
+  # Navigation
+  go_router: ^13.2.0
+
+  # State management
+  flutter_riverpod: ^2.5.1
+  riverpod_annotation: ^2.3.5
+
+  # Charts
+  fl_chart: ^0.68.0
+
+  # File picker (statement uploads)
+  file_picker: ^8.0.3
+
+  # Utilities
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  build_runner: ^2.4.9
+  riverpod_generator: ^2.3.11
+
+flutter:
+  uses-material-design: true
