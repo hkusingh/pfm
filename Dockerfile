@@ -30,8 +30,10 @@ COPY packages/core      ./packages/core
 COPY packages/db        ./packages/db
 COPY apps/api           ./apps/api
 
-# turbo respects ^build — builds contracts → core → db → api in order
-RUN pnpm turbo build --filter=@pfm/api...
+# turbo respects ^build — builds contracts → core → db → api in order.
+# Exclude @pfm/testing: it's a devDependency (test infra only, used by *.spec.ts)
+# whose source isn't copied into the production image, so it must not be built here.
+RUN pnpm turbo build --filter=@pfm/api... --filter=!@pfm/testing
 
 # ── Stage 2: production image ─────────────────────────────────────────────────
 FROM node:20-slim AS runner

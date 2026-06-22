@@ -41,8 +41,9 @@ COPY apps/web           ./apps/web
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
 
-# turbo ^build compiles contracts/ui/config before @pfm/web
-RUN pnpm turbo build --filter=@pfm/web...
+# turbo ^build compiles contracts/ui/config before @pfm/web.
+# Exclude @pfm/testing (test-only infra; source not copied into this image).
+RUN pnpm turbo build --filter=@pfm/web... --filter=!@pfm/testing
 
 # ── Stage 2: static server ────────────────────────────────────────────────────
 FROM node:20-slim AS runner
