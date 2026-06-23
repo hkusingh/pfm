@@ -138,7 +138,7 @@ variables, not secrets; they're not sensitive).
 
 The goal is to flush IAM/secret/DB wiring **once, by hand**, before automating.
 
-### 2.1 API Dockerfile (`Dockerfile`)
+### 2.1 API Dockerfile (`apps/api/Dockerfile`)
 
 Multi-stage, slim, non-root, honors `$PORT`:
 
@@ -171,7 +171,7 @@ Make sure the Nest app does `app.listen(process.env.PORT ?? 3000, '0.0.0.0')` an
 ```bash
 gcloud auth configure-docker "${REGION}-docker.pkg.dev"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/pfm/api:smoke"
-docker build -f Dockerfile -t "$IMAGE" .
+docker build -f apps/api/Dockerfile -t "$IMAGE" .
 docker push "$IMAGE"
 
 # Run migrations against Neon (direct URL) BEFORE serving
@@ -245,7 +245,7 @@ jobs:
         run: |
           gcloud auth configure-docker "$REGION-docker.pkg.dev" -q
           IMAGE="$REGION-docker.pkg.dev/$PROJECT/pfm/api:${{ github.sha }}"
-          docker build -f Dockerfile -t "$IMAGE" .
+          docker build -f apps/api/Dockerfile -t "$IMAGE" .
           docker push "$IMAGE"
           echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
       - name: Migrate (direct URL)
@@ -339,7 +339,7 @@ exposes `GET /health`.
 - [ ] `directUrl` added to `schema.prisma`; `DIRECT_DATABASE_URL` in local `.env`
 - [ ] Runtime SA + deploy SA with least-privilege roles
 - [ ] WIF pool/provider bound to `hkusingh/pfm`
-- [ ] `Dockerfile`; app listens on `$PORT`/`0.0.0.0`; `/health` exists
+- [ ] `apps/api/Dockerfile`; app listens on `$PORT`/`0.0.0.0`; `/health` exists
 - [ ] Manual smoke deploy green
 - [ ] GitHub Actions: PR checks + `deploy-staging` workflow; GitHub Environments configured
 - [ ] Web on Firebase Hosting; `VITE_API_URL` points at the API
