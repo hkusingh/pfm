@@ -51,6 +51,9 @@ ENV NODE_ENV=production
 
 EXPOSE 3000
 
-# Run pending migrations then start the API
+# Run pending migrations then start the API.
+# prisma is a devDependency of @pfm/db (pnpm doesn't hoist it to the root
+# node_modules/.bin), so invoke it via pnpm in that package — which also
+# resolves the schema from packages/db/prisma.
 CMD ["sh", "-c", \
-  "/app/node_modules/.bin/prisma migrate deploy --schema=/app/packages/db/prisma/schema.prisma && exec node /app/apps/api/dist/main.js"]
+  "pnpm --filter @pfm/db exec prisma migrate deploy && exec node /app/apps/api/dist/main.js"]
