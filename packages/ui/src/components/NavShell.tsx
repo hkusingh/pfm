@@ -90,7 +90,7 @@ function SidebarContent({ navItems, userEmail, userInitial, appName, logoSrc, ho
       {/* Brand */}
       <div className="flex items-center pt-[18px] pb-4 flex-shrink-0 justify-center">
         {logoSrc
-          ? <img src={logoSrc} alt={appName} style={{ width: '100%', height: 'auto', clipPath: 'inset(10%)' }} />
+          ? <img src={logoSrc} alt={appName} style={{ width: '100%', height: 'auto' }} />
           : (
             <>
               <div
