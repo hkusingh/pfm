@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { APP_NAME } from '../lib/appName';
 
 export function AuthLayout({ children }: { children: ReactNode }) {
   return (
@@ -53,7 +54,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
       <div className="relative w-full max-w-md">
         <div className="text-center mb-6">
           <span className="text-2xl font-bold text-white tracking-tight">
-            PFM
+            {APP_NAME}
           </span>
           <p className="mt-1 text-sm text-slate-400">Your household finances, together</p>
         </div>

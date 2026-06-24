@@ -1,24 +1,40 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Resend } from 'resend';
+import * as nodemailer from 'nodemailer';
+import type { Transporter } from 'nodemailer';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private readonly resend: Resend | null;
+  private readonly transporter: Transporter | null;
   private readonly from: string;
 
   constructor() {
-    const key = process.env.RESEND_API_KEY;
-    this.resend = key ? new Resend(key) : null;
+    const host = process.env.SMTP_HOST;
+    const user = process.env.SMTP_USER;
+    const pass = process.env.SMTP_PASS;
+    const port = Number(process.env.SMTP_PORT ?? 587);
 
-    // resend.dev is Resend's sandbox domain — only onboarding@resend.dev is a valid sender there.
-    // For any other domain the address must belong to a verified domain in your Resend account.
-    const domain = process.env.EMAIL_DOMAIN ?? 'pfm.local';
-    const localPart = domain === 'resend.dev' ? 'onboarding' : 'noreply';
-    this.from = `"${process.env.PUBLIC_APP_NAME ?? 'PFM'}" <${localPart}@${domain}>`;
+    // Provider-agnostic SMTP. Works with Mailtrap, SES, Postmark, etc.
+    // If host/user/pass are not all set, emails are only logged (dev mode).
+    this.transporter =
+      host && user && pass
+        ? nodemailer.createTransport({
+            host,
+            port,
+            secure: port === 465, // implicit TLS on 465; STARTTLS on 587/2525
+            auth: { user, pass },
+          })
+        : null;
 
-    if (!key) {
-      this.logger.warn('RESEND_API_KEY not set — emails will only be logged (dev mode)');
+    const appName = process.env.PUBLIC_APP_NAME ?? 'Smart Munshi';
+    const fromAddress =
+      process.env.EMAIL_FROM ?? `noreply@${process.env.EMAIL_DOMAIN ?? 'pfm.local'}`;
+    this.from = `"${appName}" <${fromAddress}>`;
+
+    if (!this.transporter) {
+      this.logger.warn(
+        'SMTP not configured (SMTP_HOST / SMTP_USER / SMTP_PASS) — emails will only be logged (dev mode)',
+      );
     }
   }
 
@@ -90,22 +106,23 @@ export class EmailService {
     text: string;
     html: string;
   }): Promise<void> {
-    if (!this.resend) {
+    if (!this.transporter) {
       this.logger.log(`[DEV EMAIL] To: ${opts.to} | Subject: ${opts.subject}\n${opts.text}`);
       return;
     }
 
-    const { error } = await this.resend.emails.send({
-      from: this.from,
-      to: opts.to,
-      subject: opts.subject,
-      text: opts.text,
-      html: opts.html,
-    });
-
-    if (error) {
-      this.logger.error(`Resend error sending to ${opts.to}: ${JSON.stringify(error)}`);
-      throw new Error(`Failed to send email: ${error.message}`);
+    try {
+      await this.transporter.sendMail({
+        from: this.from,
+        to: opts.to,
+        subject: opts.subject,
+        text: opts.text,
+        html: opts.html,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`SMTP error sending to ${opts.to}: ${message}`);
+      throw new Error(`Failed to send email: ${message}`);
     }
   }
 }
