@@ -50,6 +50,11 @@ Last updated: 2026-06-24.
 - Landing page = `LoginPage` wrapped by `AuthLayout`, which renders `{APP_NAME}` plus a
   logo (`apps/web/public/logo.svg`, also `favicon.svg`). Swap the SVG for a designed mark
   later; layout picks it up.
+- **Left nav:** `AppShell` now passes `appName={APP_NAME}` into `@pfm/ui`'s `NavShell`
+  (whose default was the stale `'PFM'`, now `'Smart Munshi'`). Earlier the sidebar ignored
+  `VITE_PUBLIC_APP_NAME` because the prop wasn't passed through — fixed in code, pending
+  deploy. If a new brand surface still shows the wrong name, check that the prop is threaded
+  from the web app, not just the env var.
 
 ## Encryption at rest — current state vs. target
 
@@ -89,9 +94,11 @@ Last updated: 2026-06-24.
 
 ## Open to-do checklist
 
-- [ ] `git push origin main` — local commits (Mailtrap HTTP email, brand name, logo) aren't pushed.
+- [ ] `git push origin main` — local commits (Mailtrap HTTP email, brand name, landing logo +
+      favicon, **left-nav app-name fix**, this handoff doc) aren't pushed.
 - [ ] Railway vars — web: `VITE_API_URL=https://api.thesmartmunshi.com`,
-      `VITE_PUBLIC_APP_NAME=Smart Munshi` (then rebuild web). api:
+      **`VITE_PUBLIC_APP_NAME=Smart Munshi`** (exact name — only `VITE_`-prefixed vars reach the
+      client; it's **build-time**, so the web service must **rebuild** for it to take effect). api:
       `WEB_ORIGIN=https://www.thesmartmunshi.com`, `PUBLIC_APP_NAME`, `EMAIL_FROM`,
       `MAILTRAP_API_URL`, `MAILTRAP_API_TOKEN`.
 - [ ] Promote site admin: `UPDATE "User" SET "isSiteAdmin" = true WHERE email = 'hksingh@gmail.com';`
