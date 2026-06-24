@@ -20,7 +20,7 @@ interface NavShellProps {
   onNavigate?: (href: string) => void;
 }
 
-export function NavShell({ navItems, userEmail, userInitial, appName = 'PFM', householdName, memberCount, children, onSignOut, onNavigate }: NavShellProps) {
+export function NavShell({ navItems, userEmail, userInitial, appName = 'Smart Munshi', householdName, memberCount, children, onSignOut, onNavigate }: NavShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const initial = userInitial ?? (userEmail ? userEmail[0].toUpperCase() : '?');
 
