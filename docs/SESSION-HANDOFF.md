@@ -47,9 +47,12 @@ Last updated: 2026-06-24.
 - Product name is **Smart Munshi**, env-driven: web `VITE_PUBLIC_APP_NAME`, api
   `PUBLIC_APP_NAME` (defaults to "Smart Munshi" in `apps/web/src/lib/appName.ts` and the
   api fallbacks). Do not hardcode it.
-- Landing page = `LoginPage` wrapped by `AuthLayout`, which renders `{APP_NAME}` plus a
-  logo (`apps/web/public/logo.svg`, also `favicon.svg`). Swap the SVG for a designed mark
-  later; layout picks it up.
+- Brand artwork lives in `apps/web/public`: `thesm-logo-t.png` (full lockup, transparent bg —
+  the real "The Smart Munshi" logo), `thesm-mark.png` (square shield emblem) and `favicon.png`
+  (64px emblem). Paths are centralized in `apps/web/src/lib/appName.ts` as `APP_LOGO` / `APP_MARK`.
+- Landing page (`AuthLayout`) shows the full lockup (it already contains the wordmark + tagline,
+  so the separate text was removed). The left nav passes `logoSrc={APP_LOGO}` into `NavShell`.
+  `index.html` favicon → `/favicon.png`.
 - **Left nav:** `AppShell` now passes `appName={APP_NAME}` into `@pfm/ui`'s `NavShell`
   (whose default was the stale `'PFM'`, now `'Smart Munshi'`). Earlier the sidebar ignored
   `VITE_PUBLIC_APP_NAME` because the prop wasn't passed through — fixed in code, pending
@@ -94,14 +97,9 @@ Last updated: 2026-06-24.
 
 ## Open to-do checklist
 
-- [ ] `git push origin main` — local commits (Mailtrap HTTP email, brand name, landing logo +
-      favicon, **left-nav app-name fix**, this handoff doc) aren't pushed.
-- [ ] Railway vars — web: `VITE_API_URL=https://api.thesmartmunshi.com`,
-      **`VITE_PUBLIC_APP_NAME=Smart Munshi`** (exact name — only `VITE_`-prefixed vars reach the
-      client; it's **build-time**, so the web service must **rebuild** for it to take effect). api:
-      `WEB_ORIGIN=https://www.thesmartmunshi.com`, `PUBLIC_APP_NAME`, `EMAIL_FROM`,
-      `MAILTRAP_API_URL`, `MAILTRAP_API_TOKEN`.
-- [ ] Promote site admin: `UPDATE "User" SET "isSiteAdmin" = true WHERE email = 'hksingh@gmail.com';`
+- [x] `git push origin main` ✅ done — all commits pushed.
+- [x] Railway vars ✅ done — all vars set (web: `VITE_API_URL`, `VITE_PUBLIC_APP_NAME`; api: `WEB_ORIGIN`, `PUBLIC_APP_NAME`, `EMAIL_FROM`, `MAILTRAP_API_URL`, `MAILTRAP_API_TOKEN`).
+- [x] Promote site admin: `UPDATE "User" SET "isSiteAdmin" = true WHERE email = 'hksingh@gmail.com';` ✅ done
 - [ ] Set `AUTH_GATE=true` on the api before inviting testers (was flipped false for testing).
 - [ ] Add the **DMARC** TXT record at GoDaddy (deliverability).
 - [ ] Hash `Invite.token` / `SignupInvite.token` (security gap).

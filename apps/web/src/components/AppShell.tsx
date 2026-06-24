@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { NavShell } from '@pfm/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { APP_NAME } from '../lib/appName';
+import { APP_NAME, APP_LOGO } from '../lib/appName';
 
 type Me = { id: string; email: string; name: string; isSiteAdmin: boolean };
 type Household = { id: string; name: string };
@@ -69,6 +69,7 @@ export function AppShell() {
   return (
     <NavShell
       appName={APP_NAME}
+      logoSrc={APP_LOGO}
       navItems={navItems}
       userEmail={me?.email ?? ''}
       userInitial={userInitial}

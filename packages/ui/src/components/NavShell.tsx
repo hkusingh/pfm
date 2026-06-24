@@ -13,6 +13,7 @@ interface NavShellProps {
   userEmail?: string;
   userInitial?: string;
   appName?: string;
+  logoSrc?: string;
   householdName?: string;
   memberCount?: number;
   children: React.ReactNode;
@@ -20,7 +21,7 @@ interface NavShellProps {
   onNavigate?: (href: string) => void;
 }
 
-export function NavShell({ navItems, userEmail, userInitial, appName = 'Smart Munshi', householdName, memberCount, children, onSignOut, onNavigate }: NavShellProps) {
+export function NavShell({ navItems, userEmail, userInitial, appName = 'Smart Munshi', logoSrc, householdName, memberCount, children, onSignOut, onNavigate }: NavShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const initial = userInitial ?? (userEmail ? userEmail[0].toUpperCase() : '?');
 
@@ -28,7 +29,7 @@ export function NavShell({ navItems, userEmail, userInitial, appName = 'Smart Mu
     <div className="min-h-screen flex" style={{ background: '#eef1f6' }}>
       {/* Sidebar — desktop (sticky viewport-height so footer stays pinned) */}
       <aside className="hidden md:flex md:flex-col md:w-64 flex-shrink-0 sticky top-0 h-screen" style={{ background: '#142d44' }}>
-        <SidebarContent navItems={navItems} userEmail={userEmail} userInitial={initial} appName={appName} householdName={householdName} memberCount={memberCount} onSignOut={onSignOut} onNavigate={onNavigate} />
+        <SidebarContent navItems={navItems} userEmail={userEmail} userInitial={initial} appName={appName} logoSrc={logoSrc} householdName={householdName} memberCount={memberCount} onSignOut={onSignOut} onNavigate={onNavigate} />
       </aside>
 
       {/* Mobile overlay */}
@@ -41,7 +42,7 @@ export function NavShell({ navItems, userEmail, userInitial, appName = 'Smart Mu
             aria-hidden="true"
           />
           <aside className="relative flex flex-col w-64 shadow-xl" style={{ background: '#142d44' }}>
-            <SidebarContent navItems={navItems} userEmail={userEmail} userInitial={initial} appName={appName} householdName={householdName} memberCount={memberCount} onSignOut={onSignOut} onNavigate={onNavigate} />
+            <SidebarContent navItems={navItems} userEmail={userEmail} userInitial={initial} appName={appName} logoSrc={logoSrc} householdName={householdName} memberCount={memberCount} onSignOut={onSignOut} onNavigate={onNavigate} />
           </aside>
         </div>
       )}
@@ -58,7 +59,9 @@ export function NavShell({ navItems, userEmail, userInitial, appName = 'Smart Mu
           >
             <MenuIcon />
           </button>
-          <span className="ml-3 text-white font-semibold text-sm">{appName}</span>
+          {logoSrc
+            ? <img src={logoSrc} alt={appName} className="ml-3" style={{ height: 32, width: 'auto' }} />
+            : <span className="ml-3 text-white font-semibold text-sm">{appName}</span>}
         </div>
 
         <main className="flex-1 overflow-auto p-6" id="main-content">
@@ -74,22 +77,29 @@ interface SidebarContentProps {
   userEmail?: string;
   userInitial: string;
   appName: string;
+  logoSrc?: string;
   householdName?: string;
   memberCount?: number;
   onSignOut?: () => void;
   onNavigate?: (href: string) => void;
 }
 
-function SidebarContent({ navItems, userEmail, userInitial, appName, householdName, memberCount, onSignOut, onNavigate }: SidebarContentProps) {
+function SidebarContent({ navItems, userEmail, userInitial, appName, logoSrc, householdName, memberCount, onSignOut, onNavigate }: SidebarContentProps) {
   return (
     <>
       {/* Brand */}
-      <div className="flex items-center gap-2 px-5 pt-[18px] pb-4 flex-shrink-0" style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>
-        <div
-          className="w-6 h-6 flex-shrink-0"
-          style={{ borderRadius: 7, background: 'linear-gradient(135deg,#2E6DA4,#2F855A)' }}
-        />
-        {appName}
+      <div className="flex items-center pt-[18px] pb-4 flex-shrink-0 justify-center">
+        {logoSrc
+          ? <img src={logoSrc} alt={appName} style={{ width: '100%', height: 'auto', clipPath: 'inset(10%)' }} />
+          : (
+            <>
+              <div
+                className="w-6 h-6 flex-shrink-0 mr-2"
+                style={{ borderRadius: 7, background: 'linear-gradient(135deg,#2E6DA4,#2F855A)' }}
+              />
+              <span style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>{appName}</span>
+            </>
+          )}
       </div>
 
       {/* Nav items */}
