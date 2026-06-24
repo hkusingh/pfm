@@ -1,39 +1,28 @@
 import { Injectable, Logger } from '@nestjs/common';
-import * as nodemailer from 'nodemailer';
-import type { Transporter } from 'nodemailer';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private readonly transporter: Transporter | null;
-  private readonly from: string;
+  private readonly apiUrl: string | null;
+  private readonly apiToken: string | null;
+  private readonly fromAddress: string;
+  private readonly fromName: string;
 
   constructor() {
-    const host = process.env.SMTP_HOST;
-    const user = process.env.SMTP_USER;
-    const pass = process.env.SMTP_PASS;
-    const port = Number(process.env.SMTP_PORT ?? 587);
+    // Mailtrap HTTP Email API (port 443). We use HTTP rather than SMTP because
+    // Railway (and most PaaS) block outbound SMTP ports — an HTTPS API is the
+    // reliable transport. Switching providers means changing send() to match
+    // their API, but it's isolated to this one method.
+    //   Sandbox:  https://sandbox.api.mailtrap.io/api/send/<INBOX_ID>
+    //   Live:     https://send.api.mailtrap.io/api/send
+    this.apiUrl = process.env.MAILTRAP_API_URL ?? null;
+    this.apiToken = process.env.MAILTRAP_API_TOKEN ?? null;
+    this.fromName = process.env.PUBLIC_APP_NAME ?? 'Smart Munshi';
+    this.fromAddress = process.env.EMAIL_FROM ?? 'noreply@thesmartmunshi.com';
 
-    // Provider-agnostic SMTP. Works with Mailtrap, SES, Postmark, etc.
-    // If host/user/pass are not all set, emails are only logged (dev mode).
-    this.transporter =
-      host && user && pass
-        ? nodemailer.createTransport({
-            host,
-            port,
-            secure: port === 465, // implicit TLS on 465; STARTTLS on 587/2525
-            auth: { user, pass },
-          })
-        : null;
-
-    const appName = process.env.PUBLIC_APP_NAME ?? 'Smart Munshi';
-    const fromAddress =
-      process.env.EMAIL_FROM ?? `noreply@${process.env.EMAIL_DOMAIN ?? 'pfm.local'}`;
-    this.from = `"${appName}" <${fromAddress}>`;
-
-    if (!this.transporter) {
+    if (!this.apiUrl || !this.apiToken) {
       this.logger.warn(
-        'SMTP not configured (SMTP_HOST / SMTP_USER / SMTP_PASS) — emails will only be logged (dev mode)',
+        'Email API not configured (MAILTRAP_API_URL / MAILTRAP_API_TOKEN) — emails will only be logged (dev mode)',
       );
     }
   }
@@ -106,22 +95,36 @@ export class EmailService {
     text: string;
     html: string;
   }): Promise<void> {
-    if (!this.transporter) {
+    if (!this.apiUrl || !this.apiToken) {
       this.logger.log(`[DEV EMAIL] To: ${opts.to} | Subject: ${opts.subject}\n${opts.text}`);
       return;
     }
 
     try {
-      await this.transporter.sendMail({
-        from: this.from,
-        to: opts.to,
-        subject: opts.subject,
-        text: opts.text,
-        html: opts.html,
+      const res = await fetch(this.apiUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: { email: this.fromAddress, name: this.fromName },
+          to: [{ email: opts.to }],
+          subject: opts.subject,
+          text: opts.text,
+          html: opts.html,
+        }),
+        // Fail fast instead of hanging the request on a slow/blocked connection.
+        signal: AbortSignal.timeout(15_000),
       });
+
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status} ${detail}`.trim());
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`SMTP error sending to ${opts.to}: ${message}`);
+      this.logger.error(`Email API error sending to ${opts.to}: ${message}`);
       throw new Error(`Failed to send email: ${message}`);
     }
   }
