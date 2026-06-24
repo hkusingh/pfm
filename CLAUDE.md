@@ -9,8 +9,11 @@ raise the conflict rather than silently diverging.
 > All Phase 1 epics are complete. Next: **Wave 7 — Epic 9 (BYOK AI Categorization)**. Epic 11
 > (Rental Investment Tracking) is **Phase 2** — deferred. See the **"Status & Next Up"** section at the top of
 > `IMPLEMENTATION_PLAN.md` for the full ordered work list.
-> **Deployment:** local-first for dev; a **GCP staging** environment is being stood up now — see
-> [`docs/gcp-hosting.md`](./docs/gcp-hosting.md) (runbook + CI/CD) and IMPLEMENTATION_PLAN §5.2.
+> **Deployment:** local-first for dev; the live **beta runs on Railway** (api + web + Postgres),
+> branded **Smart Munshi** at `www.thesmartmunshi.com`. GCP is the *future* target only.
+> **Read [`docs/SESSION-HANDOFF.md`](./docs/SESSION-HANDOFF.md) first** — it captures the current
+> deployment, email (Mailtrap HTTP API), branding, encryption state, and the open to-do checklist.
+> GCP runbook: [`docs/gcp-hosting.md`](./docs/gcp-hosting.md).
 
 ---
 

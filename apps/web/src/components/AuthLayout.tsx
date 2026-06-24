@@ -53,6 +53,13 @@ export function AuthLayout({ children }: { children: ReactNode }) {
       {/* Branding above the card */}
       <div className="relative w-full max-w-md">
         <div className="text-center mb-6">
+          <img
+            src="/logo.svg"
+            alt={`${APP_NAME} logo`}
+            className="mx-auto mb-3 h-12 w-12"
+            width={48}
+            height={48}
+          />
           <span className="text-2xl font-bold text-white tracking-tight">
             {APP_NAME}
           </span>
