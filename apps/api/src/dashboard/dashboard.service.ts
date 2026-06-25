@@ -2,25 +2,16 @@ import { Injectable } from '@nestjs/common';
 import { prisma } from '@pfm/db';
 import { buildScope } from '@pfm/core';
 import type { DashboardSummary, SpendingByCategoryItem, SpendingOverTimeItem } from '@pfm/contracts';
-
-type TxForCategory = {
-  amountMinor: number;
-  hasSplit: boolean;
-  categoryId: string | null;
-  categoryName: string | null;
-  categoryColor: string | null;
-  categoryKind: string | null;
-  splits: Array<{
-    amountMinor: number;
-    categoryId: string | null;
-    categoryName: string | null;
-    categoryColor: string | null;
-    categoryKind: string | null;
-  }>;
-};
+import { EncryptionService } from '../common/encryption.service';
 
 @Injectable()
 export class DashboardService {
+  constructor(private readonly encryption: EncryptionService) {}
+
+  private decAmt(enc: string, householdId: string): number {
+    return parseInt(this.encryption.decrypt(enc, householdId), 10);
+  }
+
   private async getVisibleAccountIds(
     householdId: string,
     viewerUserId: string,
@@ -55,43 +46,46 @@ export class DashboardService {
 
     const baseCurrency = household.baseCurrency;
 
-    // Previous calendar month range (UTC-consistent)
     const fromDate = new Date(from);
     const prevMonthStart = new Date(Date.UTC(fromDate.getUTCFullYear(), fromDate.getUTCMonth() - 1, 1));
     const prevMonthEnd = new Date(Date.UTC(fromDate.getUTCFullYear(), fromDate.getUTCMonth(), 0));
 
     const fetchTx = (start: Date, end: Date) =>
       accountIds.length === 0
-        ? Promise.resolve([] as Array<{ amountMinor: number; category: { kind: string } | null }>)
+        ? Promise.resolve([] as Array<{ amountMinor: string; category: { kind: string } | null }>)
         : prisma.transaction.findMany({
             where: { accountId: { in: accountIds }, postedDate: { gte: start, lte: end }, isExcluded: false },
             select: { amountMinor: true, category: { select: { kind: true } } },
-          });
+          }) as unknown as Promise<Array<{ amountMinor: string; category: { kind: string } | null }>>;
 
     const [accounts, rows, prevRows] = await Promise.all([
       prisma.account.findMany({
         where: { id: { in: accountIds } },
         select: { balanceMinor: true, currency: true, type: true },
-      }),
+      }) as unknown as Promise<Array<{ balanceMinor: string; currency: string; type: string }>>,
       fetchTx(new Date(from), new Date(to)),
       fetchTx(prevMonthStart, prevMonthEnd),
     ]);
 
-    function sumIncomeSpending(txRows: Array<{ amountMinor: number; category: { kind: string } | null }>) {
+    const sumIncomeSpending = (txRows: Array<{ amountMinor: string; category: { kind: string } | null }>) => {
       let income = 0;
       let spending = 0;
       for (const tx of txRows) {
         if (tx.category?.kind === 'transfer') continue;
-        if (tx.amountMinor > 0) income += tx.amountMinor;
-        else spending += Math.abs(tx.amountMinor);
+        const amt = this.decAmt(tx.amountMinor, householdId);
+        if (amt > 0) income += amt;
+        else spending += Math.abs(amt);
       }
       return { income, spending };
-    }
+    };
 
     const LIABILITY_TYPES = new Set(['credit_card', 'loan', 'mortgage']);
     const netWorthMinor = accounts
       .filter((a) => a.currency === baseCurrency)
-      .reduce((sum, a) => sum + (LIABILITY_TYPES.has(a.type) ? -a.balanceMinor : a.balanceMinor), 0);
+      .reduce((sum, a) => {
+        const bal = this.decAmt(a.balanceMinor, householdId);
+        return sum + (LIABILITY_TYPES.has(a.type) ? -bal : bal);
+      }, 0);
 
     const { income: incomeMinor, spending: spendingMinor } = sumIncomeSpending(rows);
     const { income: previousIncomeMinor, spending: previousSpendingMinor } = sumIncomeSpending(prevRows);
@@ -139,30 +133,32 @@ export class DashboardService {
           },
         },
       },
-    });
+    }) as unknown as Array<{
+      amountMinor: string;
+      hasSplit: boolean;
+      categoryId: string | null;
+      category: { name: string; color: string | null; kind: string } | null;
+      splits: Array<{
+        amountMinor: number; // splits NOT encrypted
+        categoryId: string | null;
+        category: { name: string; color: string | null; kind: string } | null;
+      }>;
+    }>;
 
     const map = new Map<string, { name: string; color: string | null; total: number }>();
 
     for (const tx of rows) {
-      const catTx: TxForCategory = {
-        amountMinor: tx.amountMinor,
-        hasSplit: tx.hasSplit,
-        categoryId: tx.categoryId,
-        categoryName: tx.category?.name ?? null,
-        categoryColor: tx.category?.color ?? null,
-        categoryKind: tx.category?.kind ?? null,
-        splits: tx.splits.map((s) => ({
-          amountMinor: s.amountMinor,
-          categoryId: s.categoryId,
-          categoryName: s.category?.name ?? null,
-          categoryColor: s.category?.color ?? null,
-          categoryKind: s.category?.kind ?? null,
-        })),
-      };
+      const txAmt = this.decAmt(tx.amountMinor, householdId);
 
-      const items = catTx.hasSplit
-        ? catTx.splits
-        : [{ amountMinor: catTx.amountMinor, categoryId: catTx.categoryId, categoryName: catTx.categoryName, categoryColor: catTx.categoryColor, categoryKind: catTx.categoryKind }];
+      const items = tx.hasSplit
+        ? tx.splits.map((s) => ({
+            amountMinor: s.amountMinor,
+            categoryId: s.categoryId,
+            categoryName: s.category?.name ?? null,
+            categoryColor: s.category?.color ?? null,
+            categoryKind: s.category?.kind ?? null,
+          }))
+        : [{ amountMinor: txAmt, categoryId: tx.categoryId, categoryName: tx.category?.name ?? null, categoryColor: tx.category?.color ?? null, categoryKind: tx.category?.kind ?? null }];
 
       for (const item of items) {
         if (item.categoryKind === 'transfer') continue;
@@ -200,8 +196,6 @@ export class DashboardService {
     const now = new Date();
     const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1), 1));
 
-    // Categories with a sinking fund → amber "annual expense" bar.
-    // Categories whose name contains "tax" (case-insensitive) → purple "taxes" bar.
     const [sinkingFunds, taxCategories] = await Promise.all([
       prisma.sinkingFund.findMany({ where: { householdId }, select: { categoryId: true } }),
       prisma.category.findMany({
@@ -213,11 +207,7 @@ export class DashboardService {
     const taxCategoryIds = new Set(taxCategories.map((c) => c.id));
 
     const rows = await prisma.transaction.findMany({
-      where: {
-        accountId: { in: accountIds },
-        postedDate: { gte: from },
-        isExcluded: false,
-      },
+      where: { accountId: { in: accountIds }, postedDate: { gte: from }, isExcluded: false },
       select: {
         amountMinor: true,
         postedDate: true,
@@ -226,7 +216,14 @@ export class DashboardService {
         category: { select: { kind: true } },
         splits: { select: { amountMinor: true, categoryId: true, category: { select: { kind: true } } } },
       },
-    });
+    }) as unknown as Array<{
+      amountMinor: string;
+      postedDate: Date;
+      categoryId: string | null;
+      hasSplit: boolean;
+      category: { kind: string } | null;
+      splits: Array<{ amountMinor: number; categoryId: string | null; category: { kind: string } | null }>;
+    }>;
 
     const bucketMap = new Map(buckets.map((b) => [b.month, b]));
 
@@ -235,9 +232,11 @@ export class DashboardService {
       const bucket = bucketMap.get(monthKey);
       if (!bucket) continue;
 
+      const txAmt = this.decAmt(tx.amountMinor, householdId);
+
       const items = tx.hasSplit
         ? tx.splits.map((s) => ({ amountMinor: s.amountMinor, categoryId: s.categoryId, kind: s.category?.kind ?? null }))
-        : [{ amountMinor: tx.amountMinor, categoryId: tx.categoryId, kind: tx.category?.kind ?? null }];
+        : [{ amountMinor: txAmt, categoryId: tx.categoryId, kind: tx.category?.kind ?? null }];
 
       for (const item of items) {
         if (item.kind === 'transfer') continue;

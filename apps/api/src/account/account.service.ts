@@ -8,6 +8,7 @@ import { prisma } from '@pfm/db';
 import { buildScope, canViewLineItems } from '@pfm/core';
 import { normalizeMerchant, computeDedupHash } from '@pfm/core';
 import { CategoryService } from '../category/category.service';
+import { EncryptionService } from '../common/encryption.service';
 import type {
   CreateAccountBody,
   UpdateAccountBody,
@@ -19,6 +20,7 @@ import type {
   TransactionResponse,
 } from '@pfm/contracts';
 
+// Shape of a decrypted account row (all encrypted fields already plaintext)
 type AccountRow = {
   id: string;
   name: string;
@@ -66,7 +68,56 @@ function toAccountResponse(a: AccountRow, txSumMinor = 0, lastTxDate?: Date | nu
 
 @Injectable()
 export class AccountService {
-  constructor(private readonly categories: CategoryService) {}
+  constructor(
+    private readonly categories: CategoryService,
+    private readonly encryption: EncryptionService,
+  ) {}
+
+  // ─── Encryption helpers ────────────────────────────────────────────────────
+
+  private encAccount(householdId: string) {
+    return (p: string) => this.encryption.encrypt(p, householdId);
+  }
+
+  private decAccount(raw: {
+    id: string; name: string; type: string; source: string;
+    institution: string | null; mask: string | null; balanceMinor: string;
+    balanceAsOf: Date | null; currency: string; visibility: string;
+    ownerUserId: string | null; owner: { name: string } | null; createdAt: Date;
+  }, householdId: string): AccountRow {
+    const enc = this.encAccount(householdId);
+    void enc; // enc is for writes; for reads, use decrypt
+    return {
+      ...raw,
+      name: this.encryption.decrypt(raw.name, householdId),
+      institution: raw.institution ? this.encryption.decrypt(raw.institution, householdId) : null,
+      mask: raw.mask ? this.encryption.decrypt(raw.mask, householdId) : null,
+      balanceMinor: parseInt(this.encryption.decrypt(raw.balanceMinor, householdId), 10),
+    };
+  }
+
+  private encryptTxFields(
+    amountMinor: number,
+    merchant: string | null | undefined,
+    merchantNormalized: string,
+    householdId: string,
+  ) {
+    const enc = (p: string) => this.encryption.encrypt(p, householdId);
+    return {
+      amountMinor: enc(String(amountMinor)),
+      merchant: merchant != null ? enc(merchant) : null,
+      merchantNormalized: merchantNormalized || null
+        ? enc(merchantNormalized || '')
+        : null,
+      merchantRuleHash: merchantNormalized
+        ? this.encryption.hmac(merchantNormalized)
+        : null,
+    };
+  }
+
+  private decryptTxAmount(encAmount: string, householdId: string): number {
+    return parseInt(this.encryption.decrypt(encAmount, householdId), 10);
+  }
 
   // ─── Require helpers ────────────────────────────────────────────────────────
 
@@ -96,19 +147,19 @@ export class AccountService {
       data: {
         householdId,
         ownerUserId: userId,
-        name: body.name,
+        name: this.encryption.encrypt(body.name, householdId),
         type: body.type,
         source: 'manual',
         currency: body.currency,
-        institution: body.institution ?? null,
-        mask: body.mask ?? null,
+        institution: body.institution ? this.encryption.encrypt(body.institution, householdId) : null,
+        mask: body.mask ? this.encryption.encrypt(body.mask, householdId) : null,
         visibility: body.visibility,
-        balanceMinor: body.initialBalanceMinor,
+        balanceMinor: this.encryption.encrypt(String(body.initialBalanceMinor), householdId),
         balanceAsOf: body.balanceAsOfDate ? new Date(body.balanceAsOfDate) : null,
       },
       include: { owner: { select: { name: true } } },
     });
-    return toAccountResponse(account);
+    return toAccountResponse(this.decAccount(account, householdId));
   }
 
   async listAccounts(householdId: string, userId: string): Promise<AccountListResponse> {
@@ -120,24 +171,35 @@ export class AccountService {
 
     const accountIds = allAccounts.map((a) => a.id);
 
-    // Sum all transactions per account, then subtract pre-cutoff amounts for
-    // accounts that have a balanceAsOf date set.
-    const txAggs = await prisma.transaction.groupBy({
-      by: ['accountId'],
+    // Fetch all transactions and compute per-account sum + max date in JS
+    // (SQL _sum can't aggregate encrypted strings)
+    const allTxs = await prisma.transaction.findMany({
       where: { accountId: { in: accountIds } },
-      _sum: { amountMinor: true },
-      _max: { postedDate: true },
+      select: { accountId: true, amountMinor: true, postedDate: true },
     });
-    const txSumMap = new Map(txAggs.map((s) => [s.accountId, s._sum.amountMinor ?? 0]));
-    const txMaxDateMap = new Map(txAggs.map((s) => [s.accountId, s._max.postedDate ?? null]));
 
+    const txSumMap = new Map<string, number>();
+    const txMaxDateMap = new Map<string, Date | null>();
+
+    for (const tx of allTxs) {
+      const amount = this.decryptTxAmount(tx.amountMinor, householdId);
+      txSumMap.set(tx.accountId, (txSumMap.get(tx.accountId) ?? 0) + amount);
+      const cur = txMaxDateMap.get(tx.accountId);
+      if (!cur || tx.postedDate > cur) txMaxDateMap.set(tx.accountId, tx.postedDate);
+    }
+
+    // Subtract pre-cutoff transactions for accounts with a balanceAsOf date
     const accountsWithCutoff = allAccounts.filter((a) => a.balanceAsOf !== null);
     for (const a of accountsWithCutoff) {
-      const pre = await prisma.transaction.aggregate({
+      const preTxs = await prisma.transaction.findMany({
         where: { accountId: a.id, postedDate: { lte: a.balanceAsOf! } },
-        _sum: { amountMinor: true },
+        select: { amountMinor: true },
       });
-      txSumMap.set(a.id, (txSumMap.get(a.id) ?? 0) - (pre._sum.amountMinor ?? 0));
+      const preSum = preTxs.reduce(
+        (s, tx) => s + this.decryptTxAmount(tx.amountMinor, householdId),
+        0,
+      );
+      txSumMap.set(a.id, (txSumMap.get(a.id) ?? 0) - preSum);
     }
 
     const scope = buildScope(userId, householdId, 'household', allAccounts);
@@ -148,10 +210,11 @@ export class AccountService {
     for (const a of allAccounts) {
       const txSum = txSumMap.get(a.id) ?? 0;
       const lastTxDate = txMaxDateMap.get(a.id) ?? null;
+      const decrypted = this.decAccount(a, householdId);
       if (a.ownerUserId === userId) {
-        own.push(toAccountResponse(a, txSum, lastTxDate));
+        own.push(toAccountResponse(decrypted, txSum, lastTxDate));
       } else if (canViewLineItems(scope, a.id) || scope.balanceOnlyAccountIds.has(a.id)) {
-        shared.push(toAccountResponse(a, txSum, lastTxDate));
+        shared.push(toAccountResponse(decrypted, txSum, lastTxDate));
       }
     }
 
@@ -179,20 +242,28 @@ export class AccountService {
       throw new ForbiddenException('Access denied');
     }
 
-    const txAgg = await prisma.transaction.aggregate({
+    // Fetch all post-cutoff transactions and sum in JS
+    const txs = await prisma.transaction.findMany({
       where: {
         accountId,
         ...(account.balanceAsOf ? { postedDate: { gt: account.balanceAsOf } } : {}),
       },
-      _sum: { amountMinor: true },
-      _max: { postedDate: true },
+      select: { amountMinor: true, postedDate: true },
     });
-    // For lastTransactionDate, check across ALL transactions (not just post-cutoff)
-    const lastTxAll = account.balanceAsOf
-      ? await prisma.transaction.aggregate({ where: { accountId }, _max: { postedDate: true } })
-      : null;
-    const lastTxDate = lastTxAll?._max.postedDate ?? txAgg._max.postedDate ?? null;
-    return toAccountResponse(account, txAgg._sum.amountMinor ?? 0, lastTxDate);
+    const txSum = txs.reduce((s, tx) => s + this.decryptTxAmount(tx.amountMinor, householdId), 0);
+    const maxDate = txs.reduce<Date | null>((m, tx) => (!m || tx.postedDate > m ? tx.postedDate : m), null);
+
+    // For lastTransactionDate, check ALL transactions
+    let lastTxDate: Date | null = maxDate;
+    if (account.balanceAsOf) {
+      const allTxDates = await prisma.transaction.findMany({
+        where: { accountId },
+        select: { postedDate: true },
+      });
+      lastTxDate = allTxDates.reduce<Date | null>((m, tx) => (!m || tx.postedDate > m ? tx.postedDate : m), null);
+    }
+
+    return toAccountResponse(this.decAccount(account, householdId), txSum, lastTxDate);
   }
 
   async updateAccount(
@@ -204,21 +275,26 @@ export class AccountService {
     const account = await this.requireAccount(accountId, householdId);
     this.requireOwner(account, userId);
 
+    const enc = (p: string) => this.encryption.encrypt(p, householdId);
     const updated = await prisma.account.update({
       where: { id: accountId },
       data: {
-        ...(body.name !== undefined && { name: body.name }),
+        ...(body.name !== undefined && { name: enc(body.name) }),
         ...(body.type !== undefined && { type: body.type }),
-        ...(body.institution !== undefined && { institution: body.institution }),
-        ...(body.mask !== undefined && { mask: body.mask }),
-        ...(body.balanceMinor !== undefined && { balanceMinor: body.balanceMinor }),
+        ...(body.institution !== undefined && {
+          institution: body.institution != null ? enc(body.institution) : null,
+        }),
+        ...(body.mask !== undefined && {
+          mask: body.mask != null ? enc(body.mask) : null,
+        }),
+        ...(body.balanceMinor !== undefined && { balanceMinor: enc(String(body.balanceMinor)) }),
         ...('balanceAsOfDate' in body && {
           balanceAsOf: body.balanceAsOfDate ? new Date(body.balanceAsOfDate) : null,
         }),
       },
       include: { owner: { select: { name: true } } },
     });
-    return toAccountResponse(updated);
+    return toAccountResponse(this.decAccount(updated, householdId));
   }
 
   // ─── E2.3 — Visibility ──────────────────────────────────────────────────────
@@ -237,7 +313,7 @@ export class AccountService {
       data: { visibility: body.visibility },
       include: { owner: { select: { name: true } } },
     });
-    return toAccountResponse(updated);
+    return toAccountResponse(this.decAccount(updated, householdId));
   }
 
   async deleteAccount(
@@ -286,16 +362,14 @@ export class AccountService {
       data: {
         accountId,
         postedDate: new Date(body.postedDate),
-        merchant: body.merchant ?? null,
-        merchantNormalized: merchantNormalized || null,
-        amountMinor: body.amountMinor,
+        ...this.encryptTxFields(body.amountMinor, body.merchant ?? null, merchantNormalized, householdId),
         currency,
         categoryId,
         dedupHash,
       },
     });
 
-    return this.toTransactionResponse(tx);
+    return this.toTransactionResponse(tx, householdId);
   }
 
   async listTransactions(
@@ -318,7 +392,7 @@ export class AccountService {
       orderBy: { postedDate: 'desc' },
     });
 
-    return txs.map((t) => this.toTransactionResponse(t));
+    return txs.map((t) => this.toTransactionResponse(t, householdId));
   }
 
   async updateTransaction(
@@ -336,12 +410,14 @@ export class AccountService {
     });
     if (!existing) throw new NotFoundException('Transaction not found');
 
-    const newMerchant = body.merchant !== undefined ? body.merchant : existing.merchant;
-    const newAmountMinor =
-      body.amountMinor !== undefined ? body.amountMinor : existing.amountMinor;
-    const newDate = body.postedDate
-      ? new Date(body.postedDate)
-      : existing.postedDate;
+    const existingMerchant = existing.merchant
+      ? this.encryption.decrypt(existing.merchant, householdId)
+      : null;
+    const existingAmount = this.decryptTxAmount(existing.amountMinor, householdId);
+
+    const newMerchant = body.merchant !== undefined ? body.merchant : existingMerchant;
+    const newAmountMinor = body.amountMinor !== undefined ? body.amountMinor : existingAmount;
+    const newDate = body.postedDate ? new Date(body.postedDate) : existing.postedDate;
     const merchantNormalized = normalizeMerchant(newMerchant);
     const dedupHash = computeDedupHash(
       accountId,
@@ -354,16 +430,14 @@ export class AccountService {
       where: { id: txId },
       data: {
         postedDate: newDate,
-        merchant: newMerchant ?? null,
-        merchantNormalized: merchantNormalized || null,
-        amountMinor: newAmountMinor,
+        ...this.encryptTxFields(newAmountMinor, newMerchant, merchantNormalized, householdId),
         ...(body.currency && { currency: body.currency }),
         ...(body.categoryId !== undefined && { categoryId: body.categoryId }),
         dedupHash,
       },
     });
 
-    return this.toTransactionResponse(updated);
+    return this.toTransactionResponse(updated, householdId);
   }
 
   async deleteTransaction(
@@ -386,18 +460,18 @@ export class AccountService {
     accountId: string;
     postedDate: Date;
     merchant: string | null;
-    amountMinor: number;
+    amountMinor: string;
     currency: string;
     categoryId: string | null;
     dedupHash: string;
     createdAt: Date;
-  }): TransactionResponse {
+  }, householdId: string): TransactionResponse {
     return {
       id: t.id,
       accountId: t.accountId,
       postedDate: t.postedDate.toISOString().slice(0, 10),
-      merchant: t.merchant,
-      amountMinor: t.amountMinor,
+      merchant: t.merchant ? this.encryption.decrypt(t.merchant, householdId) : null,
+      amountMinor: this.decryptTxAmount(t.amountMinor, householdId),
       currency: t.currency,
       categoryId: t.categoryId,
       dedupHash: t.dedupHash,

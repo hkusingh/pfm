@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, FormField, Card, CardHeader, CardTitle } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { AuthLayout } from '../components/AuthLayout';
 
 const CURRENCIES = [
@@ -13,11 +14,17 @@ const CURRENCIES = [
 
 export function CreateHouseholdPage() {
   const navigate = useNavigate();
+  const { clearTokens } = useAuth();
   const [name, setName] = useState('');
   const [baseCurrency, setBaseCurrency] = useState('USD');
   const [monthStartDay, setMonthStartDay] = useState(1);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  function handleSignOut() {
+    clearTokens();
+    navigate('/login', { replace: true });
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -91,6 +98,12 @@ export function CreateHouseholdPage() {
           <Button type="submit" className="w-full" loading={loading}>
             Create household
           </Button>
+          <p className="text-center text-xs text-gray-400">
+            Wrong account?{' '}
+            <button type="button" onClick={handleSignOut} className="underline hover:text-gray-600">
+              Sign out
+            </button>
+          </p>
         </form>
       </Card>
     </AuthLayout>

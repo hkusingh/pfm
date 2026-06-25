@@ -16,11 +16,18 @@ import type {
   ChartView,
   ReportKey,
 } from '@pfm/contracts';
+import { EncryptionService } from '../common/encryption.service';
 
 type CatMeta = { name: string; color: string | null; parentId: string | null };
 
 @Injectable()
 export class ReportsService {
+  constructor(private readonly encryption: EncryptionService) {}
+
+  private decAmt(enc: string, householdId: string): number {
+    return parseInt(this.encryption.decrypt(enc, householdId), 10);
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   private async getVisibleAccountIds(
@@ -64,7 +71,6 @@ export class ReportsService {
     return new Map(cats.map((c) => [c.id, { name: c.name, color: c.color, parentId: c.parentId }]));
   }
 
-  // Returns the root (top-level) category id — assumes max 2 levels of nesting
   private getTopLevelId(catId: string, catMap: Map<string, CatMeta>): string {
     const cat = catMap.get(catId);
     if (!cat || cat.parentId === null) return catId;
@@ -89,30 +95,22 @@ export class ReportsService {
 
     const catMap = await this.getCategoryMap(householdId);
 
+    // amountMinor filter removed from SQL — decrypt and filter < 0 in JS
     const rows = await prisma.transaction.findMany({
       where: {
         accountId: { in: accountIds },
         postedDate: { gte: start },
-        amountMinor: { lt: 0 },
         isExcluded: false,
         hasSplit: false,
         categoryId: { not: null },
       },
-      select: {
-        postedDate: true,
-        amountMinor: true,
-        categoryId: true,
-      },
-    });
+      select: { postedDate: true, amountMinor: true, categoryId: true },
+    }) as unknown as Array<{ postedDate: Date; amountMinor: string; categoryId: string | null }>;
 
+    // Split amounts stay as Int (not encrypted)
     const splitRows = await prisma.transactionSplit.findMany({
       where: {
-        transaction: {
-          accountId: { in: accountIds },
-          postedDate: { gte: start },
-          isExcluded: false,
-          hasSplit: true,
-        },
+        transaction: { accountId: { in: accountIds }, postedDate: { gte: start }, isExcluded: false, hasSplit: true },
         categoryId: { not: null },
         amountMinor: { lt: 0 },
       },
@@ -123,7 +121,6 @@ export class ReportsService {
       },
     });
 
-    // Accumulate into top-level categories
     const accumMap = new Map<string, { name: string; color: string | null; byMonth: Map<string, number> }>();
 
     const accum = (catId: string, monthKey: string, abs: number) => {
@@ -136,9 +133,11 @@ export class ReportsService {
     };
 
     for (const row of rows) {
+      const amt = this.decAmt(row.amountMinor, householdId);
+      if (amt >= 0) continue; // only expenses
       const mk = (row.postedDate as Date).toISOString().slice(0, 7);
       if (!monthKeys.includes(mk)) continue;
-      accum(row.categoryId!, mk, Math.abs(row.amountMinor));
+      accum(row.categoryId!, mk, Math.abs(amt));
     }
 
     for (const split of splitRows) {
@@ -147,19 +146,13 @@ export class ReportsService {
       accum(split.categoryId!, mk, Math.abs(split.amountMinor));
     }
 
-    // ── Explicit category selection ───────────────────────────────────────────
     if (categoryIds && categoryIds.length > 0) {
       const pinnedSet = new Set(categoryIds);
       const pinned = categoryIds
         .filter((id) => accumMap.has(id))
         .map((id) => {
           const e = accumMap.get(id)!;
-          return {
-            categoryId: id,
-            name: e.name,
-            color: e.color,
-            amounts: monthKeys.map((mk) => e.byMonth.get(mk) ?? 0),
-          };
+          return { categoryId: id, name: e.name, color: e.color, amounts: monthKeys.map((mk) => e.byMonth.get(mk) ?? 0) };
         });
 
       const otherAmounts = monthKeys.map((_, mi) =>
@@ -178,7 +171,6 @@ export class ReportsService {
       };
     }
 
-    // ── Default: top 4 by total spend + Other ────────────────────────────────
     const sorted = [...accumMap.entries()]
       .map(([categoryId, { name, color, byMonth }]) => ({
         categoryId,
@@ -202,10 +194,7 @@ export class ReportsService {
       });
     }
 
-    return {
-      months: monthKeys,
-      categories: top.map(({ total: _total, ...r }) => r),
-    };
+    return { months: monthKeys, categories: top.map(({ total: _total, ...r }) => r) };
   }
 
   // ── Period comparison ──────────────────────────────────────────────────────
@@ -226,24 +215,22 @@ export class ReportsService {
       return { from, to, label: `Q${q} ${y}` };
     }
     const y = parseInt(period);
-    return {
-      from: new Date(Date.UTC(y, 0, 1)),
-      to: new Date(Date.UTC(y, 11, 31)),
-      label: String(y),
-    };
+    return { from: new Date(Date.UTC(y, 0, 1)), to: new Date(Date.UTC(y, 11, 31)), label: String(y) };
   }
 
   private async spendByCategoryInRange(
     accountIds: string[],
     from: Date,
     to: Date,
+    householdId: string,
   ): Promise<Map<string, { name: string; amountMinor: number; parentId: string | null }>> {
     if (accountIds.length === 0) return new Map();
+
+    // amountMinor filter removed from SQL — decrypt and filter < 0 in JS
     const rows = await prisma.transaction.findMany({
       where: {
         accountId: { in: accountIds },
         postedDate: { gte: from, lte: to },
-        amountMinor: { lt: 0 },
         isExcluded: false,
         hasSplit: false,
         categoryId: { not: null },
@@ -253,20 +240,22 @@ export class ReportsService {
         categoryId: true,
         category: { select: { name: true, parentId: true } },
       },
-    });
+    }) as unknown as Array<{
+      amountMinor: string;
+      categoryId: string | null;
+      category: { name: string; parentId: string | null } | null;
+    }>;
 
     const result = new Map<string, { name: string; amountMinor: number; parentId: string | null }>();
     for (const row of rows) {
+      const amt = this.decAmt(row.amountMinor, householdId);
+      if (amt >= 0) continue; // only expenses
       const id = row.categoryId!;
       const existing = result.get(id);
       if (existing) {
-        existing.amountMinor += Math.abs(row.amountMinor);
+        existing.amountMinor += Math.abs(amt);
       } else {
-        result.set(id, {
-          name: row.category!.name,
-          amountMinor: Math.abs(row.amountMinor),
-          parentId: row.category!.parentId,
-        });
+        result.set(id, { name: row.category!.name, amountMinor: Math.abs(amt), parentId: row.category!.parentId });
       }
     }
     return result;
@@ -286,8 +275,8 @@ export class ReportsService {
     const catMap = await this.getCategoryMap(householdId);
 
     const [map1, map2] = await Promise.all([
-      this.spendByCategoryInRange(accountIds, p1.from, p1.to),
-      this.spendByCategoryInRange(accountIds, p2.from, p2.to),
+      this.spendByCategoryInRange(accountIds, p1.from, p1.to, householdId),
+      this.spendByCategoryInRange(accountIds, p2.from, p2.to, householdId),
     ]);
 
     type ParentEntry = {
@@ -365,26 +354,28 @@ export class ReportsService {
     const accountIds = await this.getVisibleAccountIds(householdId, viewerUserId, view);
     if (accountIds.length === 0) return { merchants: [] };
 
+    // amountMinor filter removed from SQL (encrypted); merchantNormalized can't be grouped in SQL
     const rows = await prisma.transaction.findMany({
       where: {
         accountId: { in: accountIds },
         postedDate: { gte: start },
-        amountMinor: { lt: 0 },
         isExcluded: false,
         merchantNormalized: { not: null },
       },
       select: { merchantNormalized: true, amountMinor: true },
-    });
+    }) as unknown as Array<{ merchantNormalized: string; amountMinor: string }>;
 
     const map = new Map<string, { amountMinor: number; count: number }>();
     for (const row of rows) {
-      const key = row.merchantNormalized!;
+      const amt = this.decAmt(row.amountMinor, householdId);
+      if (amt >= 0) continue; // only expenses
+      const key = this.encryption.decrypt(row.merchantNormalized, householdId);
       const existing = map.get(key);
       if (existing) {
-        existing.amountMinor += Math.abs(row.amountMinor);
+        existing.amountMinor += Math.abs(amt);
         existing.count += 1;
       } else {
-        map.set(key, { amountMinor: Math.abs(row.amountMinor), count: 1 });
+        map.set(key, { amountMinor: Math.abs(amt), count: 1 });
       }
     }
 
@@ -410,11 +401,12 @@ export class ReportsService {
       select: { baseCurrency: true },
     });
 
-    const allAccounts = await prisma.account.findMany({
+    const allAccountsRaw = await prisma.account.findMany({
       where: { householdId },
       select: { id: true, ownerUserId: true, visibility: true, balanceMinor: true, balanceAsOf: true, type: true, currency: true },
     });
-    const scope = buildScope(viewerUserId, householdId, 'household', allAccounts);
+
+    const scope = buildScope(viewerUserId, householdId, 'household', allAccountsRaw);
     const accountIdSet = scope.lineItemAccountIds;
     if (accountIdSet.size === 0) {
       return { points: monthKeys.map((month) => ({ month, netWorthMinor: 0 })) };
@@ -422,8 +414,7 @@ export class ReportsService {
 
     const LIABILITY_TYPES = new Set(['credit_card', 'loan', 'mortgage']);
 
-    // Only include accounts in the household's base currency (matches dashboard logic)
-    const visibleAccounts = allAccounts.filter(
+    const visibleAccounts = allAccountsRaw.filter(
       (a) => accountIdSet.has(a.id) && a.currency === household.baseCurrency,
     );
     const filteredAccountIds = visibleAccounts.map((a) => a.id);
@@ -435,20 +426,19 @@ export class ReportsService {
     const txRows = await prisma.transaction.findMany({
       where: { accountId: { in: filteredAccountIds }, postedDate: { lte: endOfLastMonth }, isExcluded: false },
       select: { accountId: true, amountMinor: true, postedDate: true },
-    });
+    }) as unknown as Array<{ accountId: string; amountMinor: string; postedDate: Date }>;
 
-    // Sign-flip liabilities so their balance is treated as negative net worth
     const currentBalanceByAccount = new Map(
-      visibleAccounts.map((a) => [
-        a.id,
-        LIABILITY_TYPES.has(a.type) ? -a.balanceMinor : a.balanceMinor,
-      ]),
+      visibleAccounts.map((a) => {
+        const bal = this.decAmt(a.balanceMinor, householdId);
+        return [a.id, LIABILITY_TYPES.has(a.type) ? -bal : bal];
+      }),
     );
 
     const txByAccount = new Map<string, { amountMinor: number; postedDate: Date }[]>();
     for (const tx of txRows) {
       const list = txByAccount.get(tx.accountId) ?? [];
-      list.push({ amountMinor: tx.amountMinor, postedDate: tx.postedDate as Date });
+      list.push({ amountMinor: this.decAmt(tx.amountMinor, householdId), postedDate: tx.postedDate });
       txByAccount.set(tx.accountId, list);
     }
 
@@ -459,7 +449,6 @@ export class ReportsService {
       let netWorthMinor = 0;
       for (const account of visibleAccounts) {
         const current = currentBalanceByAccount.get(account.id) ?? 0;
-        // For liabilities, transactions increase balance (reduce debt) — sign-flip consistently
         const sign = LIABILITY_TYPES.has(account.type) ? -1 : 1;
         const futureSum = (txByAccount.get(account.id) ?? [])
           .filter((tx) => tx.postedDate > endOfMonth)
@@ -494,20 +483,13 @@ export class ReportsService {
 
   async listSavedCharts(householdId: string, viewerUserId: string): Promise<SavedChartsListResponse> {
     const charts = await prisma.savedChart.findMany({
-      where: {
-        householdId,
-        OR: [{ isShared: true }, { creatorId: viewerUserId }],
-      },
+      where: { householdId, OR: [{ isShared: true }, { creatorId: viewerUserId }] },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
     return { charts: charts.map((c) => this.toResponse(c)) };
   }
 
-  async createSavedChart(
-    householdId: string,
-    creatorId: string,
-    body: CreateSavedChartBody,
-  ): Promise<SavedChartResponse> {
+  async createSavedChart(householdId: string, creatorId: string, body: CreateSavedChartBody): Promise<SavedChartResponse> {
     const chart = await prisma.savedChart.create({
       data: {
         householdId,

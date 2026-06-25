@@ -7,7 +7,8 @@
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
-    "test:e2e": "turbo test:e2e"
+    "test:e2e": "turbo test:e2e",
+    "migrate:encryption": "node scripts/migrate-encryption.mjs"
   },
   "devDependencies": {
     "eslint": "^9.18.0",
