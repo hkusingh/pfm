@@ -9,7 +9,9 @@ export function MfaVerifyPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { setTokens } = useAuth();
-  const mfaChallengeToken = (location.state as { mfaChallengeToken?: string })?.mfaChallengeToken;
+  const state = location.state as { mfaChallengeToken?: string; householdInvite?: string } | null;
+  const mfaChallengeToken = state?.mfaChallengeToken;
+  const householdInvite = state?.householdInvite;
 
   const [code, setCode] = useState('');
   const [trustDevice, setTrustDevice] = useState(false);
@@ -34,7 +36,7 @@ export function MfaVerifyPage() {
         localStorage.setItem('deviceToken', res.deviceToken);
       }
       setTokens(res.accessToken, res.refreshToken);
-      navigate('/dashboard');
+      navigate(householdInvite ? `/invites/${householdInvite}` : '/dashboard');
     } catch (err) {
       setError(err instanceof ApiException ? err.message : 'Verification failed.');
     } finally {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Button, FormField, Card, CardHeader, CardTitle } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -11,7 +11,12 @@ export function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { setTokens } = useAuth();
+
+  // Carried from household invite link — preserved through the entire auth chain
+  const householdInvite = searchParams.get('householdInvite') ?? undefined;
+  const postLoginDest = householdInvite ? `/invites/${householdInvite}` : '/dashboard';
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -25,14 +30,14 @@ export function LoginPage() {
       >('/auth/login', { email, password, deviceToken });
 
       if (res.status === 'mfa_required') {
-        navigate('/mfa/verify', { state: { mfaChallengeToken: res.mfaChallengeToken } });
+        navigate('/mfa/verify', { state: { mfaChallengeToken: res.mfaChallengeToken, householdInvite } });
       } else if (res.mfaVerified) {
         setTokens(res.accessToken, res.refreshToken);
-        navigate('/dashboard');
+        navigate(postLoginDest);
       } else {
         // No MFA enrolled yet — send to setup
         setTokens(res.accessToken, res.refreshToken);
-        navigate('/mfa/setup');
+        navigate('/mfa/setup', { state: { householdInvite } });
       }
     } catch (err) {
       setError(err instanceof ApiException ? err.message : 'Login failed. Please try again.');

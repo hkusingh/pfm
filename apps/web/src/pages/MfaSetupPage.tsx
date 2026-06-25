@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, Button, FormField } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
 import { AuthLayout } from '../components/AuthLayout';
@@ -8,6 +8,8 @@ type TotpSetup = { secret: string; otpauthUrl: string; qrDataUrl: string };
 
 export function MfaSetupPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const householdInvite = (location.state as { householdInvite?: string } | null)?.householdInvite;
   const [totp, setTotp] = useState<TotpSetup | null>(null);
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
@@ -44,7 +46,7 @@ export function MfaSetupPage() {
             <div className="bg-gray-100 rounded-lg p-4 font-mono text-sm space-y-1">
               {recoveryCodes.map((c) => <div key={c}>{c}</div>)}
             </div>
-            <Button className="w-full" onClick={() => navigate('/login')}>Done — sign in</Button>
+            <Button className="w-full" onClick={() => navigate(householdInvite ? `/login?householdInvite=${householdInvite}` : '/login')}>Done — sign in</Button>
           </div>
         </Card>
       </AuthLayout>
