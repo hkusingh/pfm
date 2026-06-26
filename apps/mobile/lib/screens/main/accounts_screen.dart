@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -35,7 +36,12 @@ class _State extends ConsumerState<AccountsScreen> {
       _hid = hh.id;
       final data = await api.get(
         '/households/${hh.id}/accounts',
-        (d) => (d as List).map((e) => Account.fromJson(e as Map<String, dynamic>)).toList(),
+        (d) {
+          final map = d as Map<String, dynamic>;
+          final own = (map['own'] as List).map((e) => Account.fromJson(e as Map<String, dynamic>)).toList();
+          final shared = (map['shared'] as List).map((e) => Account.fromJson(e as Map<String, dynamic>)).toList();
+          return [...own, ...shared];
+        },
       );
       setState(() { _accounts = data; _loading = false; });
     } catch (e) {
@@ -77,7 +83,21 @@ class _State extends ConsumerState<AccountsScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      body: SafeArea(child: _loading
+      appBar: AppBar(
+        title: const Text('Accounts'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/dashboard'),
+        ),
+        actions: [
+          if (_uploading)
+            TextButton(
+              onPressed: () => setState(() { _uploading = false; _uploadMsg = null; }),
+              child: const Text('Cancel', style: TextStyle(color: AppColors.danger)),
+            ),
+        ],
+      ),
+      body: _loading
         ? const Center(child: CircularProgressIndicator())
         : _error != null
           ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -85,12 +105,6 @@ class _State extends ConsumerState<AccountsScreen> {
               TextButton(onPressed: _load, child: const Text('Retry')),
             ]))
           : RefreshIndicator(onRefresh: _load, child: CustomScrollView(slivers: [
-              // Header
-              SliverToBoxAdapter(child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-                child: Text('Accounts', style: Theme.of(context).textTheme.titleLarge),
-              )),
-
               // Upload statement button
               SliverToBoxAdapter(child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
@@ -144,7 +158,6 @@ class _State extends ConsumerState<AccountsScreen> {
 
               const SliverToBoxAdapter(child: SizedBox(height: 16)),
             ])),
-      ),
     );
   }
 }

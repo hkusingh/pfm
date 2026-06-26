@@ -29,10 +29,13 @@ class _State extends ConsumerState<LoginScreen> {
         '/auth/login', (d) => d as Map<String, dynamic>,
         body: {'email': _email.text.trim(), 'password': _password.text},
       );
-      if (resp['requiresMfa'] == true) {
-        if (mounted) context.go('/mfa-verify?mfaToken=${resp['mfaToken'] ?? ''}');
+      if (resp['status'] == 'mfa_required') {
+        if (mounted) context.go('/mfa-verify?mfaToken=${resp['mfaChallengeToken'] ?? ''}');
       } else {
-        await ref.read(authProvider).setTokens(resp['accessToken'] as String, resp['refreshToken'] as String);
+        final access = resp['accessToken'] as String?;
+        final refresh = resp['refreshToken'] as String?;
+        if (access == null || refresh == null) throw Exception('Unexpected login response');
+        await ref.read(authProvider).setTokens(access, refresh);
       }
     } catch (e) {
       setState(() { _error = e.toString(); });

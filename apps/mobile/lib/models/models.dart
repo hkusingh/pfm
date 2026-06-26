@@ -29,7 +29,7 @@ class Member {
   final String role;
   Member({required this.id, required this.email, this.name, required this.role});
   factory Member.fromJson(Map<String, dynamic> j) => Member(
-    id: j['id'] as String, email: j['email'] as String,
+    id: (j['userId'] ?? j['id']) as String, email: j['email'] as String,
     name: j['name'] as String?, role: j['role'] as String? ?? 'member',
   );
 }

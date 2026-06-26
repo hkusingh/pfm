@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
-import 'package:flutter_secure_store/flutter_secure_store.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'auth.dart';
 import 'config.dart';
 
 class ApiException implements Exception {
@@ -14,8 +15,9 @@ class ApiException implements Exception {
 class ApiService {
   late final Dio _dio;
   final FlutterSecureStorage _store;
+  final void Function()? onUnauthorized;
 
-  ApiService(this._store) {
+  ApiService(this._store, {this.onUnauthorized}) {
     _dio = Dio(BaseOptions(
       baseUrl: apiUrl,
       connectTimeout: const Duration(seconds: 10),
@@ -39,6 +41,7 @@ class ApiService {
             return handler.resolve(resp);
           } catch (_) {
             await _store.deleteAll();
+            onUnauthorized?.call();
           }
         }
         final data = error.response?.data;
@@ -61,7 +64,9 @@ class ApiService {
 
   T _unwrap<T>(Response resp, T Function(dynamic) fromJson) {
     if (resp.statusCode == 204 || resp.data == null) return null as T;
-    return fromJson(resp.data);
+    // API wraps all responses in { data: T }
+    final payload = (resp.data is Map && resp.data['data'] != null) ? resp.data['data'] : resp.data;
+    return fromJson(payload);
   }
 
   Future<T> get<T>(String path, T Function(dynamic) fromJson, {Map<String, dynamic>? params}) async {
@@ -102,4 +107,7 @@ class ApiService {
 
 final _storage = const FlutterSecureStorage();
 
-final apiProvider = Provider<ApiService>((ref) => ApiService(_storage));
+final apiProvider = Provider<ApiService>((ref) {
+  final auth = ref.read(authProvider);
+  return ApiService(_storage, onUnauthorized: auth.clearTokens);
+});
