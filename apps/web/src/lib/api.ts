@@ -69,7 +69,7 @@ async function request<T>(path: string, init?: RequestInit, allowRefresh = true)
     } catch {
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
-      window.location.href = '/login';
+      window.location.href = '/';
       throw new ApiException('UNAUTHORIZED', 'Session expired. Please log in again.');
     }
   }

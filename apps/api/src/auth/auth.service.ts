@@ -259,6 +259,19 @@ export class AuthService {
     });
   }
 
+  // Issues a read-only 2-hour demo token scoped to the seeded demo user.
+  // No session record is created — demo sessions cannot be refreshed.
+  async startDemo(): Promise<{ accessToken: string; expiresIn: number }> {
+    const demoUser = await prisma.user.findUnique({
+      where: { email: 'demo@demo.pfm.invalid' },
+    });
+    if (!demoUser) {
+      throw new Error('Demo household is not seeded. Run: pnpm --filter @pfm/db seed:demo');
+    }
+    const accessToken = await this.tokens.issueDemoToken(demoUser.id, demoUser.email);
+    return { accessToken, expiresIn: 2 * 3600 };
+  }
+
   // Used by the global JWT guard to look up the current user
   async validateUser(userId: string) {
     return prisma.user.findUnique({

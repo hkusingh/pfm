@@ -111,6 +111,7 @@ export type AccessTokenPayload = {
   sub: string;       // userId
   email: string;
   mfaVerified: boolean;
+  isDemo?: boolean;  // true for read-only demo sessions; no refresh token issued
   iat?: number;
   exp?: number;
 };

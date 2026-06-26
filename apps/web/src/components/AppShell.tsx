@@ -5,6 +5,7 @@ import { NavShell } from '@pfm/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { APP_NAME, APP_LOGO, APP_MARK } from '../lib/appName';
+import { DemoBanner } from './DemoBanner';
 
 type Me = { id: string; email: string; name: string; isSiteAdmin: boolean };
 type Household = { id: string; name: string };
@@ -12,7 +13,7 @@ type TxListMeta = { items: unknown[]; total: number };
 type Member = { id: string };
 
 export function AppShell() {
-  const { clearTokens } = useAuth();
+  const { clearTokens, isDemo } = useAuth();
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
@@ -59,23 +60,26 @@ export function AppShell() {
     const refreshToken = localStorage.getItem('refreshToken');
     if (refreshToken) api.post('/auth/logout', { refreshToken }).catch(() => undefined);
     clearTokens();
-    navigate('/login');
+    navigate('/');
   }
 
   return (
+    <>
+    <DemoBanner />
     <NavShell
       appName={APP_NAME}
       logoSrc={APP_LOGO}
       logoMark={APP_MARK}
       navItems={navItems}
-      userEmail={me?.email ?? ''}
-      userInitial={userInitial}
+      userEmail={isDemo ? 'Demo mode' : (me?.email ?? '')}
+      userInitial={isDemo ? '👁' : userInitial}
       householdName={household?.name}
       memberCount={members?.length}
       onSignOut={handleSignOut}
       onNavigate={(href) => navigate(href)}
     >
-      <Outlet />
+      <Outlet context={{ isDemo }} />
     </NavShell>
+    </>
   );
 }

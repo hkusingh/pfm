@@ -100,9 +100,16 @@ Last updated: 2026-06-24.
 - [x] `git push origin main` ✅ done — all commits pushed.
 - [x] Railway vars ✅ done — all vars set (web: `VITE_API_URL`, `VITE_PUBLIC_APP_NAME`; api: `WEB_ORIGIN`, `PUBLIC_APP_NAME`, `EMAIL_FROM`, `MAILTRAP_API_URL`, `MAILTRAP_API_TOKEN`).
 - [x] Promote site admin: `UPDATE "User" SET "isSiteAdmin" = true WHERE email = 'hksingh@gmail.com';` ✅ done
+- [x] **Field-level encryption of sensitive columns** ✅ done — committed and **Railway DB migrated**.
+      ⚠️ Implication: any seed/demo data must now be written **through the encryption helper**
+      (raw inserts produce unreadable values for encrypted columns) — see
+      `docs/landing-page-and-tour-plan.md` §7.1. Note: uploaded **statement file bytes** are a
+      separate concern and are still **not** encrypted (tied to the storage decision below).
 - [ ] Set `AUTH_GATE=true` on the api before inviting testers (was flipped false for testing).
 - [ ] Add the **DMARC** TXT record at GoDaddy (deliverability).
 - [ ] Hash `Invite.token` / `SignupInvite.token` (security gap).
 - [ ] Decide statement-file storage (A discard vs B durable+encrypted); if B, add `store.delete`
       to `deleteBatch` and encrypt bytes before `store.put`.
 - [ ] Epic 9 (BYOK AI) — implement with envelope/KMS encryption for keys; never log/return keys.
+- [ ] **Landing page + product tour** — see `docs/landing-page-and-tour-plan.md` (build spec for
+      the new marketing landing + no-account demo tour; light theme, login modal, seeded demo).

@@ -264,7 +264,7 @@ function PreferencesCard({ household }: { household: Household }) {
       await api.delete('/user', { confirmEmail: delEmail });
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
-      window.location.href = '/login';
+      window.location.href = '/';
     } catch (err) {
       alert(err instanceof ApiException ? err.message : 'Account deletion failed. Try again.');
     }

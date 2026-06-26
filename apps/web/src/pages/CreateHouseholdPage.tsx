@@ -23,7 +23,7 @@ export function CreateHouseholdPage() {
 
   function handleSignOut() {
     clearTokens();
-    navigate('/login', { replace: true });
+    navigate('/', { replace: true });
   }
 
   async function handleSubmit(e: React.FormEvent) {

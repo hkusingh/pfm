@@ -25,6 +25,7 @@ import { InvitesPage } from './pages/admin/InvitesPage';
 import { UsersPage } from './pages/admin/UsersPage';
 import { PolicyPage } from './pages/admin/PolicyPage';
 import { AppShell } from './components/AppShell';
+import { LandingPage } from './pages/LandingPage';
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -84,8 +85,9 @@ export function App() {
             </Route>
           </Route>
 
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          {/* Public landing page — authed users are redirected to /dashboard inside LandingPage */}
+          <Route path="/" element={<LandingPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
