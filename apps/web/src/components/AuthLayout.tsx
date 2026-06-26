@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { APP_NAME, APP_LOGO } from '../lib/appName';
 
 export function AuthLayout({ children }: { children: ReactNode }) {
   return (
@@ -52,10 +53,11 @@ export function AuthLayout({ children }: { children: ReactNode }) {
       {/* Branding above the card */}
       <div className="relative w-full max-w-md">
         <div className="text-center mb-6">
-          <span className="text-2xl font-bold text-white tracking-tight">
-            PFM
-          </span>
-          <p className="mt-1 text-sm text-slate-400">Your household finances, together</p>
+          <img
+            src={APP_LOGO}
+            alt={APP_NAME}
+            className="mx-auto w-72 max-w-full h-auto"
+          />
         </div>
         {children}
       </div>

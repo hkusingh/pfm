@@ -36,7 +36,7 @@ function decrypt(ciphertext: string): string {
   return decipher.update(encrypted) + decipher.final('utf8');
 }
 
-const APP_NAME = process.env.PUBLIC_APP_NAME ?? 'PFM';
+const APP_NAME = process.env.PUBLIC_APP_NAME ?? 'Smart Munshi';
 const EMAIL_CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 @Injectable()

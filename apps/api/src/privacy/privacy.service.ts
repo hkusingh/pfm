@@ -85,21 +85,28 @@ export class PrivacyService {
       throw new ForbiddenException('Email confirmation does not match.');
     }
 
-    // Block deletion if user is the sole owner of any household.
+    // For each household where this user is the sole owner, check if other
+    // members exist. If other members exist but no other owner, block deletion
+    // (someone would be left without an owner). If the user is the only member,
+    // the household will be deleted as part of this operation.
+    const householdsToDelete: string[] = [];
     for (const membership of user.memberships) {
-      if (membership.role === 'owner') {
-        const otherOwners = await prisma.membership.count({
-          where: {
-            householdId: membership.householdId,
-            role: 'owner',
-            userId: { not: userId },
-          },
-        });
-        if (otherOwners === 0) {
-          throw new ForbiddenException(
-            'You are the sole owner of a household. Transfer ownership before deleting your account.',
-          );
-        }
+      if (membership.role !== 'owner') continue;
+      const [otherOwners, otherMembers] = await Promise.all([
+        prisma.membership.count({
+          where: { householdId: membership.householdId, role: 'owner', userId: { not: userId } },
+        }),
+        prisma.membership.count({
+          where: { householdId: membership.householdId, userId: { not: userId } },
+        }),
+      ]);
+      if (otherOwners === 0 && otherMembers > 0) {
+        throw new ForbiddenException(
+          'You are the sole owner of a household that has other members. Transfer ownership before deleting your account.',
+        );
+      }
+      if (otherOwners === 0 && otherMembers === 0) {
+        householdsToDelete.push(membership.householdId);
       }
     }
 
@@ -118,6 +125,11 @@ export class PrivacyService {
             metadata: { email: user.email },
           })),
         });
+      }
+
+      // Delete sole-owner households with no other members (cascades to all financial data).
+      if (householdsToDelete.length > 0) {
+        await tx.household.deleteMany({ where: { id: { in: householdsToDelete } } });
       }
 
       await tx.membership.deleteMany({ where: { userId } });

@@ -1,10 +1,14 @@
 // Thin fetch wrapper — all API calls go through here.
-// The Vite proxy forwards /api/* → http://localhost:3000/* in dev.
+//
+// Dev: VITE_API_URL is unset, so BASE='/api' and the Vite proxy forwards
+//   /api/* → http://localhost:3000/* (see vite.config.ts).
+// Deployed (Railway/GCP): set VITE_API_URL to the API's public origin at BUILD
+//   time (Vite inlines env vars), e.g. https://pfm-api-production.up.railway.app.
 //
 // On 401: automatically refreshes the access token once and retries.
 // On refresh failure: clears stored tokens and redirects to /login.
 
-const BASE = '/api';
+const BASE = import.meta.env.VITE_API_URL ?? '/api';
 
 type ApiSuccess<T> = { data: T };
 type ApiError = { error: { code: string; message: string; details?: unknown } };
@@ -65,7 +69,7 @@ async function request<T>(path: string, init?: RequestInit, allowRefresh = true)
     } catch {
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
-      window.location.href = '/login';
+      window.location.href = '/';
       throw new ApiException('UNAUTHORIZED', 'Session expired. Please log in again.');
     }
   }

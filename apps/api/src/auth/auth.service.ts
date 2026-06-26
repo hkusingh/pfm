@@ -2,6 +2,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import * as argon2 from 'argon2';
@@ -20,6 +21,8 @@ import { authGate } from '../common/feature-flags';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly tokens: TokenService,
     private readonly email: EmailService,
@@ -205,7 +208,14 @@ export class AuthService {
 
     const token = await this.tokens.issuePasswordResetToken(user.id, user.passwordHash);
     const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
-    await this.email.sendPasswordReset(user.email, `${webOrigin}/reset-password?token=${token}`);
+    try {
+      await this.email.sendPasswordReset(user.email, `${webOrigin}/reset-password?token=${token}`);
+    } catch (err) {
+      // Don't surface mail-delivery failures to the client (avoids 500s and
+      // avoids leaking whether the address exists). The error is logged in
+      // EmailService; the reset link is also logged there in dev mode.
+      this.logger.error(`Password-reset email failed for ${email}: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {
@@ -247,6 +257,19 @@ export class AuthService {
         data: { revokedAt: new Date() },
       });
     });
+  }
+
+  // Issues a read-only 2-hour demo token scoped to the seeded demo user.
+  // No session record is created — demo sessions cannot be refreshed.
+  async startDemo(): Promise<{ accessToken: string; expiresIn: number }> {
+    const demoUser = await prisma.user.findUnique({
+      where: { email: 'demo@demo.pfm.invalid' },
+    });
+    if (!demoUser) {
+      throw new Error('Demo household is not seeded. Run: pnpm --filter @pfm/db seed:demo');
+    }
+    const accessToken = await this.tokens.issueDemoToken(demoUser.id, demoUser.email);
+    return { accessToken, expiresIn: 2 * 3600 };
   }
 
   // Used by the global JWT guard to look up the current user

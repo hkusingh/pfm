@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../lib/api';
+import { api, ApiException } from '../lib/api';
 
 type Me = {
   id: string;
@@ -261,10 +261,12 @@ function PreferencesCard({ household }: { household: Household }) {
 
   async function handleDelete() {
     try {
-      await api.delete('/user', { email: delEmail });
+      await api.delete('/user', { confirmEmail: delEmail });
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
       window.location.href = '/';
-    } catch {
-      alert('Account deletion failed. Check your email matches.');
+    } catch (err) {
+      alert(err instanceof ApiException ? err.message : 'Account deletion failed. Try again.');
     }
   }
 

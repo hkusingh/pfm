@@ -14,6 +14,7 @@ import type { ImportPreviewResponse, ImportCommitBody, ImportCommitResponse, Con
 import type { CsvColumnMapping, FlaggedDuplicate } from '@pfm/contracts';
 import { parsePdf } from './pdf-parser';
 import { TransactionService } from '../transaction/transaction.service';
+import { EncryptionService } from '../common/encryption.service';
 
 // Phase 1: local filesystem. Swap for GCS-backed impl in production.
 class LocalObjectStore {
@@ -49,7 +50,10 @@ function detectFormat(originalName: string, mimeType: string): FileFormat {
 
 @Injectable()
 export class ImportService {
-  constructor(private readonly txService: TransactionService) {}
+  constructor(
+    private readonly txService: TransactionService,
+    private readonly encryption: EncryptionService,
+  ) {}
 
   // ── E3.1 — Upload + preview ───────────────────────────────────────────────
 
@@ -80,7 +84,7 @@ export class ImportService {
           importBatchId: batch.id,
           storageKey,
           sourceFingerprint: preview.fingerprint,
-          originalName: file.originalname,
+          originalName: this.encryption.encrypt(file.originalname, householdId),
         },
       });
 
@@ -116,7 +120,7 @@ export class ImportService {
           importBatchId: batch.id,
           storageKey,
           sourceFingerprint: fingerprint,
-          originalName: file.originalname,
+          originalName: this.encryption.encrypt(file.originalname, householdId),
         },
       });
 
@@ -150,7 +154,7 @@ export class ImportService {
         importBatchId: batch.id,
         storageKey,
         sourceFingerprint: fingerprint,
-        originalName: file.originalname,
+        originalName: this.encryption.encrypt(file.originalname, householdId),
       },
     });
 
@@ -202,7 +206,8 @@ export class ImportService {
     });
 
     const buffer = store.get(importFile.storageKey);
-    const format = detectFormat(importFile.originalName, '');
+    const decryptedOriginalName = this.encryption.decrypt(importFile.originalName, householdId);
+    const format = detectFormat(decryptedOriginalName, '');
 
     let rows: { date: string; merchant: string | null; amountMinor: number }[] = [];
 
@@ -261,14 +266,15 @@ export class ImportService {
         if (existing) { skipped++; continue; }
 
         // Fuzzy dedup fallback — only runs when exact hash misses.
-        // Same account + date + amount + matching first word of normalized merchant.
-        // Instead of silently skipping, surface these to the user for review.
+        // Same account + date + matching first word of normalized merchant + matching amount.
+        // Amount filter moved to JS since amountMinor is now encrypted.
         const postedDate = new Date(row.date);
         const candidates = await prisma.transaction.findMany({
-          where: { accountId: account.id, postedDate, amountMinor: row.amountMinor },
+          where: { accountId: account.id, postedDate },
           select: {
             id: true,
             merchant: true,
+            amountMinor: true,
             postedDate: true,
             category: { select: { name: true, color: true } },
           },
@@ -276,18 +282,25 @@ export class ImportService {
         if (candidates.length > 0) {
           const incomingPrefix = normalizedMerchant.split(' ')[0];
           const fuzzyMatch = candidates.find((c) => {
-            if (!c.merchant && !row.merchant) return true;
-            if (!c.merchant || !row.merchant) return false;
-            const existingPrefix = normalizeMerchant(c.merchant).split(' ')[0];
+            // Amount must match (decrypt to compare)
+            const existingAmt = parseInt(this.encryption.decrypt(c.amountMinor, householdId), 10);
+            if (existingAmt !== row.amountMinor) return false;
+            const decMerchant = c.merchant ? this.encryption.decrypt(c.merchant, householdId) : null;
+            if (!decMerchant && !row.merchant) return true;
+            if (!decMerchant || !row.merchant) return false;
+            const existingPrefix = normalizeMerchant(decMerchant).split(' ')[0];
             return incomingPrefix && existingPrefix === incomingPrefix;
           });
           if (fuzzyMatch) {
+            const decMerchant = fuzzyMatch.merchant
+              ? this.encryption.decrypt(fuzzyMatch.merchant, householdId)
+              : null;
             flagged.push({
               date: row.date,
               merchant: row.merchant ?? null,
               amountMinor: row.amountMinor,
               existingId: fuzzyMatch.id,
-              existingMerchant: fuzzyMatch.merchant ?? null,
+              existingMerchant: decMerchant,
               existingCategoryName: fuzzyMatch.category?.name ?? null,
               existingCategoryColor: fuzzyMatch.category?.color ?? null,
               existingPostedDate: fuzzyMatch.postedDate.toISOString().slice(0, 10),
@@ -309,9 +322,12 @@ export class ImportService {
           data: {
             accountId: account.id,
             postedDate,
-            merchant: row.merchant,
-            merchantNormalized: normalizedMerchant || null,
-            amountMinor: row.amountMinor,
+            merchant: row.merchant ? this.encryption.encrypt(row.merchant, householdId) : null,
+            merchantNormalized: normalizedMerchant
+              ? this.encryption.encrypt(normalizedMerchant, householdId)
+              : null,
+            merchantRuleHash: normalizedMerchant ? this.encryption.hmac(normalizedMerchant) : null,
+            amountMinor: this.encryption.encrypt(String(row.amountMinor), householdId),
             currency: account.currency,
             dedupHash,
             categoryId,
@@ -400,9 +416,12 @@ export class ImportService {
       data: {
         accountId: account.id,
         postedDate,
-        merchant: row.merchant,
-        merchantNormalized: normalizedMerchant || null,
-        amountMinor: row.amountMinor,
+        merchant: row.merchant ? this.encryption.encrypt(row.merchant, householdId) : null,
+        merchantNormalized: normalizedMerchant
+          ? this.encryption.encrypt(normalizedMerchant, householdId)
+          : null,
+        merchantRuleHash: normalizedMerchant ? this.encryption.hmac(normalizedMerchant) : null,
+        amountMinor: this.encryption.encrypt(String(row.amountMinor), householdId),
         currency: account.currency,
         dedupHash,
         categoryId,
@@ -413,7 +432,7 @@ export class ImportService {
 
   // ── E3.3 — List import history ────────────────────────────────────────────
 
-  async listBatches(householdId: string) {
+  async listBatches(householdId: string): Promise<{ id: string; originalName: string; accountName: string | null; importedCount: number; skippedCount: number; createdAt: string }[]> {
     const batches = await prisma.importBatch.findMany({
       where: { householdId, status: 'done' },
       orderBy: { createdAt: 'desc' },
@@ -424,14 +443,19 @@ export class ImportService {
       },
     });
 
-    return batches.map((b) => ({
-      id: b.id,
-      originalName: b.files[0]?.originalName ?? 'Unknown file',
-      accountName: b.account ? `${b.account.name}${b.account.mask ? ` ····${b.account.mask}` : ''}` : null,
-      importedCount: b.importedCount,
-      skippedCount: b.skippedCount,
-      createdAt: b.createdAt.toISOString(),
-    }));
+    return batches.map((b) => {
+      const rawOriginalName = b.files[0]?.originalName;
+      const originalName = rawOriginalName
+        ? this.encryption.decrypt(rawOriginalName, householdId)
+        : 'Unknown file';
+      let accountName: string | null = null;
+      if (b.account) {
+        const name = this.encryption.decrypt(b.account.name, householdId);
+        const mask = b.account.mask ? this.encryption.decrypt(b.account.mask, householdId) : null;
+        accountName = `${name}${mask ? ` ····${mask}` : ''}`;
+      }
+      return { id: b.id, originalName, accountName, importedCount: b.importedCount, skippedCount: b.skippedCount, createdAt: b.createdAt.toISOString() };
+    });
   }
 
   // ── E3.4 — Delete batch (rolls back all its transactions) ─────────────────

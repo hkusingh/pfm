@@ -9,8 +9,11 @@ raise the conflict rather than silently diverging.
 > All Phase 1 epics are complete. Next: **Wave 7 — Epic 9 (BYOK AI Categorization)**. Epic 11
 > (Rental Investment Tracking) is **Phase 2** — deferred. See the **"Status & Next Up"** section at the top of
 > `IMPLEMENTATION_PLAN.md` for the full ordered work list.
-> **Deployment:** local-first for dev; a **GCP staging** environment is being stood up now — see
-> [`docs/gcp-hosting.md`](./docs/gcp-hosting.md) (runbook + CI/CD) and IMPLEMENTATION_PLAN §5.2.
+> **Deployment:** local-first for dev; the live **beta runs on Railway** (api + web + Postgres),
+> branded **Smart Munshi** at `www.thesmartmunshi.com`. GCP is the *future* target only.
+> **Read [`docs/SESSION-HANDOFF.md`](./docs/SESSION-HANDOFF.md) first** — it captures the current
+> deployment, email (Mailtrap HTTP API), branding, encryption state, and the open to-do checklist.
+> GCP runbook: [`docs/gcp-hosting.md`](./docs/gcp-hosting.md).
 
 ---
 
@@ -150,10 +153,12 @@ generated secrets + `AUTH_GATE=false`, starts Postgres, installs, migrates dev+t
 - **Tests with the code.** Every story adds tests for its acceptance criteria. Endpoints over
   account/transaction data add a visibility leakage test. Don't mark a task done with failing tests or
   a partial implementation.
-- **No brand name in code.** The product name is undecided. Use the working name `pfm`/`@pfm/*` only.
-  The user-facing app title comes from a single `APP_NAME` constant in `packages/config` (sourced from
-  the `PUBLIC_APP_NAME` env var); never hardcode a product/brand name in UI copy, page titles, emails,
-  or package names.
+- **Brand name is env-driven; don't hardcode it.** The product brand is **Smart Munshi**; the repo and
+  package names stay `pfm`/`@pfm/*` (internal). The user-facing name comes from env, not literals:
+  the **web** reads `VITE_PUBLIC_APP_NAME` via `apps/web/src/lib/appName.ts` (`APP_NAME`, used in the UI
+  and `document.title`); the **api** reads `PUBLIC_APP_NAME` (MFA issuer + email "from"). Both default
+  to "Smart Munshi". Never hardcode a brand name in UI copy, page titles, emails, or package names —
+  renaming stays a config change.
 - **Wireframes are the UI specification.** Before implementing any screen, panel, or component, open
   `docs/wireframes-phase1.html` and match the layout, element positions, labels, and interactions
   exactly. If the wireframe conflicts with a PRD requirement, raise the conflict — do not resolve it

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma } from '@pfm/db';
 import { buildScope, computeReserveProgress, amortizedMonthlyMinor } from '@pfm/core';
+import { EncryptionService } from '../common/encryption.service';
 import type {
   BudgetResponse,
   BudgetSummaryItem,
@@ -46,6 +47,8 @@ function budgetToResponse(b: {
 
 @Injectable()
 export class BudgetService {
+  constructor(private readonly encryption: EncryptionService) {}
+
   // ── Visibility-scoped accounts (mirrors transaction/dashboard services) ───
 
   private async getVisibleAccountIds(householdId: string, viewerUserId: string): Promise<string[]> {
@@ -105,9 +108,12 @@ export class BudgetService {
     // the amortized set-aside; reserve-funded payments draw from the reserve, not the budget).
     const spentByCategory = new Map<string, number>();
     for (const tx of transactions) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const txAmt = parseInt(this.encryption.decrypt((tx as any).amountMinor, householdId), 10);
+
       const items = tx.hasSplit
         ? tx.splits.map((s) => ({ amountMinor: s.amountMinor, categoryId: s.categoryId, kind: s.category?.kind ?? null }))
-        : [{ amountMinor: tx.amountMinor, categoryId: tx.categoryId, kind: tx.category?.kind ?? null }];
+        : [{ amountMinor: txAmt, categoryId: tx.categoryId, kind: tx.category?.kind ?? null }];
 
       for (const item of items) {
         if (item.kind !== 'expense' || !item.categoryId) continue;
@@ -327,9 +333,12 @@ export class BudgetService {
 
     const receivedByCategory = new Map<string, number>();
     for (const tx of transactions) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const txAmt = parseInt(this.encryption.decrypt((tx as any).amountMinor, householdId), 10);
+
       const items = tx.hasSplit
         ? tx.splits.map((s) => ({ amountMinor: s.amountMinor, categoryId: s.categoryId, kind: s.category?.kind ?? null }))
-        : [{ amountMinor: tx.amountMinor, categoryId: tx.categoryId, kind: tx.category?.kind ?? null }];
+        : [{ amountMinor: txAmt, categoryId: tx.categoryId, kind: tx.category?.kind ?? null }];
 
       for (const item of items) {
         if (item.kind !== 'income' || !item.categoryId || item.amountMinor <= 0) continue;

@@ -82,6 +82,14 @@ export class AuthController {
     return ok({ reset: true });
   }
 
+  @Public()
+  @Post('demo')
+  @HttpCode(200)
+  async demo(): Promise<ReturnType<typeof ok>> {
+    const result = await this.auth.startDemo();
+    return ok(result);
+  }
+
   @Get('me')
   async me(@CurrentUser() user: AccessTokenPayload): Promise<ReturnType<typeof ok>> {
     const data = await this.auth.getMe(user.sub);

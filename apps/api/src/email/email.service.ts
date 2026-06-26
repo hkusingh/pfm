@@ -1,24 +1,29 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Resend } from 'resend';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private readonly resend: Resend | null;
-  private readonly from: string;
+  private readonly apiUrl: string | null;
+  private readonly apiToken: string | null;
+  private readonly fromAddress: string;
+  private readonly fromName: string;
 
   constructor() {
-    const key = process.env.RESEND_API_KEY;
-    this.resend = key ? new Resend(key) : null;
+    // Mailtrap HTTP Email API (port 443). We use HTTP rather than SMTP because
+    // Railway (and most PaaS) block outbound SMTP ports — an HTTPS API is the
+    // reliable transport. Switching providers means changing send() to match
+    // their API, but it's isolated to this one method.
+    //   Sandbox:  https://sandbox.api.mailtrap.io/api/send/<INBOX_ID>
+    //   Live:     https://send.api.mailtrap.io/api/send
+    this.apiUrl = process.env.MAILTRAP_API_URL ?? null;
+    this.apiToken = process.env.MAILTRAP_API_TOKEN ?? null;
+    this.fromName = process.env.PUBLIC_APP_NAME ?? 'Smart Munshi';
+    this.fromAddress = process.env.EMAIL_FROM ?? 'noreply@thesmartmunshi.com';
 
-    // resend.dev is Resend's sandbox domain — only onboarding@resend.dev is a valid sender there.
-    // For any other domain the address must belong to a verified domain in your Resend account.
-    const domain = process.env.EMAIL_DOMAIN ?? 'pfm.local';
-    const localPart = domain === 'resend.dev' ? 'onboarding' : 'noreply';
-    this.from = `"${process.env.PUBLIC_APP_NAME ?? 'PFM'}" <${localPart}@${domain}>`;
-
-    if (!key) {
-      this.logger.warn('RESEND_API_KEY not set — emails will only be logged (dev mode)');
+    if (!this.apiUrl || !this.apiToken) {
+      this.logger.warn(
+        'Email API not configured (MAILTRAP_API_URL / MAILTRAP_API_TOKEN) — emails will only be logged (dev mode)',
+      );
     }
   }
 
@@ -90,22 +95,37 @@ export class EmailService {
     text: string;
     html: string;
   }): Promise<void> {
-    if (!this.resend) {
+    if (!this.apiUrl || !this.apiToken) {
       this.logger.log(`[DEV EMAIL] To: ${opts.to} | Subject: ${opts.subject}\n${opts.text}`);
       return;
     }
 
-    const { error } = await this.resend.emails.send({
-      from: this.from,
-      to: opts.to,
-      subject: opts.subject,
-      text: opts.text,
-      html: opts.html,
-    });
+    try {
+      const res = await fetch(this.apiUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: { email: this.fromAddress, name: this.fromName },
+          to: [{ email: opts.to }],
+          subject: opts.subject,
+          text: opts.text,
+          html: opts.html,
+        }),
+        // Fail fast instead of hanging the request on a slow/blocked connection.
+        signal: AbortSignal.timeout(15_000),
+      });
 
-    if (error) {
-      this.logger.error(`Resend error sending to ${opts.to}: ${JSON.stringify(error)}`);
-      throw new Error(`Failed to send email: ${error.message}`);
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status} ${detail}`.trim());
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Email API error sending to ${opts.to}: ${message}`);
+      throw new Error(`Failed to send email: ${message}`);
     }
   }
 }

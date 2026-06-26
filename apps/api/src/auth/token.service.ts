@@ -6,6 +6,7 @@ import { prisma } from '@pfm/db';
 
 const ACCESS_TTL_SECONDS = 15 * 60;        // 15 min
 const REFRESH_TTL_SECONDS = 30 * 24 * 3600; // 30 days
+const DEMO_TTL_SECONDS = 2 * 3600;          // 2 hours
 
 function accessSecret() {
   const s = process.env.JWT_ACCESS_SECRET;
@@ -60,6 +61,15 @@ export class TokenService {
 
     const user = await prisma.user.findUniqueOrThrow({ where: { id: session.userId } });
     return this.issueTokenPair(user.id, user.email, true);
+  }
+
+  // Short-lived (2-hour) demo token — read-only, no refresh token, no session record.
+  async issueDemoToken(userId: string, email: string): Promise<string> {
+    return new SignJWT({ sub: userId, email, mfaVerified: true, isDemo: true })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime(`${DEMO_TTL_SECONDS}s`)
+      .sign(accessSecret());
   }
 
   // Short-lived (1-hour) password reset token. Embeds a fingerprint of the

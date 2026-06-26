@@ -5,8 +5,7 @@
   "main": "./src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src",
-    "build": "tsc"
+    "lint": "eslint src"
   },
   "devDependencies": {
     "@pfm/config": "workspace:*",

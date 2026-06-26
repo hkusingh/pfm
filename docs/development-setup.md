@@ -62,6 +62,22 @@ To exercise the real invite/MFA flow locally, set `AUTH_GATE=true` in `.env`, re
 issue yourself a signup invite from the admin area (the seeded site admin can do this once it has a
 password — see below).
 
+## Environments
+
+PFM uses one codebase across two environments that differ **only by configuration**, never by code:
+
+| | **Local dev** (this guide) | **Beta / test** ([Railway.md](./Railway.md)) | **Production** (later, [gcp-hosting.md](./gcp-hosting.md)) |
+|---|---|---|---|
+| Purpose | fast iteration | invited testers | real users |
+| `AUTH_GATE` | `false` (no invite/MFA) | `true` (invite-only + MFA) | `true` |
+| Host | your machine | Railway (API + web + Postgres) | GCP Cloud Run + Neon |
+| Email | logged to stdout | real (Resend) | real (Resend) |
+| Secrets | generated placeholders in `.env` | Railway service variables | GCP Secret Manager |
+| Deploys from | n/a | push to `main` | release tag |
+
+The same container images run on Railway and GCP — Railway is the beta stand-in until production scale
+is needed. To stand up the beta environment, follow [**Railway.md**](./Railway.md).
+
 ## Databases
 
 | Database | Used by | Connection var |
@@ -88,6 +104,75 @@ docker compose logs -f postgres            # tail the database logs
 docker compose down                        # stop Postgres (keeps data)
 docker compose down -v && ./scripts/setup-dev.sh   # wipe the database and start fresh
 ```
+
+## Migrating an existing local database to encrypted storage
+
+> **Only needed if you pulled this branch while already having Account or Transaction data in your
+> local `pfm_dev` database.** Fresh clones and developers who ran `setup-dev.sh` after this change
+> can skip this section entirely — `setup-dev.sh` is idempotent and will apply the migration
+> automatically.
+
+### Background
+
+As of the encryption migration (`20260625174107_add_encryption_fields`), the following fields are
+stored as AES-256-GCM ciphertext instead of plaintext:
+
+| Table | Fields |
+|---|---|
+| `Account` | `name`, `institution`, `mask`, `balanceMinor` |
+| `Transaction` | `merchant`, `merchantNormalized`, `amountMinor` |
+| `ImportFile` | `originalName` |
+
+Existing rows that were written as plaintext integers/strings cannot be decrypted — they must be
+deleted before the new code starts. **Non-financial tables (User, Household, Category, Budget,
+etc.) are untouched.**
+
+### Step 1 — Pull and install
+
+```bash
+git pull
+pnpm install
+```
+
+### Step 2 — Run the migration script
+
+```bash
+pnpm migrate:encryption
+```
+
+The script will:
+
+1. Add `ENCRYPTION_KEY` to your `.env` if it's missing (uses an all-zeros dev placeholder — fine
+   locally, never used in production).
+2. Detect whether your database has existing financial rows.
+3. If it does, show you exactly what will be deleted and ask for confirmation before proceeding.
+4. Truncate `Account`, `Transaction`, `TransactionSplit`, `TransferPair`, `ImportFile`,
+   `ImportBatch`, and `TransferRoute`.
+5. Apply the pending Prisma migration.
+
+### Step 3 — Restart the dev server
+
+```bash
+pnpm dev
+```
+
+Log in, create a new account, import a statement, and verify everything works. Any data you enter
+from this point is stored encrypted.
+
+### The local `ENCRYPTION_KEY`
+
+Your `.env` will contain:
+
+```
+ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000
+```
+
+This is 32 zero bytes — a valid AES-256 key that the local app uses for all
+encrypt/decrypt operations. It is intentionally insecure (do not use it in any deployed
+environment). The Railway/production key is a different random value set in Railway's environment
+variables; data encrypted locally cannot be decrypted by the production key and vice versa.
+
+---
 
 ## Using your own Postgres
 

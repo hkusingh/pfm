@@ -200,13 +200,15 @@ model Account {
   id           String        @id @default(cuid())
   householdId  String
   ownerUserId  String?
+  // Encrypted at rest (AES-256-GCM via EncryptionService, context = householdId)
   name         String
   type         AccountType
   source       AccountSource @default(manual)
   institution  String?
   // Last 4 digits of account number
   mask         String?
-  balanceMinor  Int           @default(0)
+  // Encrypted; was Int — use EncryptionService to read/write
+  balanceMinor  String
   balanceAsOf   DateTime?
   currency      String        @default("USD")
   visibility   Visibility    @default(shared)
@@ -231,12 +233,16 @@ model Transaction {
   id                 String    @id @default(cuid())
   accountId          String
   postedDate         DateTime  @db.Date
+  // Encrypted at rest (AES-256-GCM via EncryptionService, context = householdId)
   merchant           String?
   merchantNormalized String?
-  amountMinor        Int
+  // HMAC-SHA256 of merchantNormalized — plaintext, used for category rule matching
+  merchantRuleHash   String?
+  // Encrypted; was Int — use EncryptionService to read/write
+  amountMinor        String
   currency           String    @default("USD")
   categoryId         String?
-  // SHA-256 of account+date+amount+merchantNormalized — prevents duplicate imports
+  // SHA-256 of account+date+plaintext-amount+plaintext-merchantNormalized — prevents duplicate imports
   dedupHash          String
   sinkingFundId      String?
   isReserveFunded    Boolean   @default(false)
@@ -455,6 +461,7 @@ model ImportFile {
   storageKey        String
   // SHA-256 of filename+size+first-row — used to recall column mappings
   sourceFingerprint String
+  // Encrypted at rest (AES-256-GCM via EncryptionService, context = householdId)
   originalName      String
   createdAt         DateTime @default(now())
 

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { prisma } from '@pfm/db';
 import { buildScope, canViewLineItems } from '@pfm/core';
 import { merchantRuleKey, merchantSimilarityScore, MERCHANT_MATCH_THRESHOLD } from '@pfm/core';
+import { EncryptionService } from '../common/encryption.service';
 import type { TransactionListItem, TransactionListResponse, RecategorizeTxBody, ApplyRulesResponse, PutSplitsBody, ExcludeTransactionBody, TransferPairResponse, TransferRouteResponse, TransferRouteBody, NeedsRoutingItem } from '@pfm/contracts';
 import { TRANSFER_PATTERNS } from '../category/category.service';
 
@@ -28,14 +29,15 @@ const TX_INCLUDE = {
 } as const;
 
 // Shared shape returned by all Prisma queries that include account/category/splits
-type TxWithIncludes = {
+// amountMinor is string (encrypted) from DB; we decrypt before use
+type RawTxWithIncludes = {
   id: string; accountId: string; postedDate: Date; merchant: string | null;
-  amountMinor: number; currency: string; categoryId: string | null;
+  amountMinor: string; currency: string; categoryId: string | null;
   hasSplit: boolean; isExcluded: boolean; externalTransfer: boolean; dedupHash: string; createdAt: Date;
   account: { name: string };
   category: { name: string; color: string | null } | null;
   splits: Array<{
-    id: string; categoryId: string | null; amountMinor: number;
+    id: string; categoryId: string | null; amountMinor: number; // splits NOT encrypted
     category: { name: string; color: string | null } | null;
   }>;
   transferPairAsDebit: {
@@ -49,7 +51,23 @@ type TxWithIncludes = {
   awaitingCounterpart: { id: string; name: string } | null;
 };
 
-function txToListItem(t: TxWithIncludes): TransactionListItem {
+// After decryption: amounts are numbers, strings are plaintext
+type DecryptedTxWithIncludes = Omit<RawTxWithIncludes, 'amountMinor' | 'merchant' | 'account' | 'transferPairAsDebit' | 'transferPairAsCredit' | 'awaitingCounterpart'> & {
+  amountMinor: number;
+  merchant: string | null;
+  account: { name: string };
+  transferPairAsDebit: {
+    id: string; creditTxId: string;
+    creditTx: { accountId: string; account: { name: string } };
+  } | null;
+  transferPairAsCredit: {
+    id: string; debitTxId: string;
+    debitTx: { accountId: string; account: { name: string } };
+  } | null;
+  awaitingCounterpart: { id: string; name: string } | null;
+};
+
+function txToListItem(t: DecryptedTxWithIncludes): TransactionListItem {
   let transferPair: TransactionListItem['transferPair'] = null;
   if (t.transferPairAsDebit) {
     transferPair = {
@@ -101,7 +119,7 @@ export interface ListTransactionsQuery {
   search?: string;
   accountId?: string;
   categoryId?: string;
-  categoryIds?: string;   // comma-separated list; used for "Other" drill-down from Dashboard
+  categoryIds?: string;
   hasCategory?: boolean;
   from?: string;
   to?: string;
@@ -109,11 +127,56 @@ export interface ListTransactionsQuery {
   limit?: number;
   sortBy?: 'date' | 'amount';
   sortDir?: 'asc' | 'desc';
-  hideLinked?: boolean;   // exclude the credit side of linked transfer pairs
+  hideLinked?: boolean;
 }
 
 @Injectable()
 export class TransactionService {
+  constructor(private readonly encryption: EncryptionService) {}
+
+  // ── Decryption helpers ────────────────────────────────────────────────────
+
+  private decAmt(enc: string, householdId: string): number {
+    return parseInt(this.encryption.decrypt(enc, householdId), 10);
+  }
+
+  private decStr(enc: string | null, householdId: string): string | null {
+    return enc ? this.encryption.decrypt(enc, householdId) : null;
+  }
+
+  private decryptTx(raw: RawTxWithIncludes, householdId: string): DecryptedTxWithIncludes {
+    return {
+      ...raw,
+      amountMinor: this.decAmt(raw.amountMinor, householdId),
+      merchant: this.decStr(raw.merchant, householdId),
+      account: { name: this.encryption.decrypt(raw.account.name, householdId) },
+      transferPairAsDebit: raw.transferPairAsDebit
+        ? {
+            ...raw.transferPairAsDebit,
+            creditTx: {
+              ...raw.transferPairAsDebit.creditTx,
+              account: { name: this.encryption.decrypt(raw.transferPairAsDebit.creditTx.account.name, householdId) },
+            },
+          }
+        : null,
+      transferPairAsCredit: raw.transferPairAsCredit
+        ? {
+            ...raw.transferPairAsCredit,
+            debitTx: {
+              ...raw.transferPairAsCredit.debitTx,
+              account: { name: this.encryption.decrypt(raw.transferPairAsCredit.debitTx.account.name, householdId) },
+            },
+          }
+        : null,
+      awaitingCounterpart: raw.awaitingCounterpart
+        ? {
+            id: raw.awaitingCounterpart.id,
+            name: this.encryption.decrypt(raw.awaitingCounterpart.name, householdId),
+          }
+        : null,
+    };
+  }
+
   // ── E5.1 — Visibility-scoped list across all accessible accounts ──────────
 
   async listTransactions(
@@ -124,20 +187,17 @@ export class TransactionService {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 50));
 
-    // Build visibility scope
     const allAccounts = await prisma.account.findMany({
       where: { householdId },
       select: { id: true, ownerUserId: true, visibility: true },
     });
     const scope = buildScope(viewerUserId, householdId, 'household', allAccounts);
-
-    // Collect IDs of accounts whose line items this viewer may see
     const visibleAccountIds = [...scope.lineItemAccountIds];
+
     if (visibleAccountIds.length === 0) {
       return { items: [], total: 0, totalAmountMinor: 0, totalExpenseMinor: 0, totalIncomeMinor: 0, page, limit };
     }
 
-    // Apply filters
     const accountFilter = query.accountId
       ? (visibleAccountIds.includes(query.accountId) ? [query.accountId] : [])
       : visibleAccountIds;
@@ -149,14 +209,10 @@ export class TransactionService {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {
       accountId: { in: accountFilter },
-      // hideLinked: exclude credit-side transactions that are already linked to a debit in another account
       ...(query.hideLinked ? { transferPairAsCredit: { is: null } } : {}),
     };
-    if (query.search) {
-      where.merchant = { contains: query.search, mode: 'insensitive' };
-    }
+    // NOTE: merchant search removed from SQL — filtered in JS after decryption
     if (query.categoryIds !== undefined) {
-      // Multi-category filter (from Dashboard "Other" drill-down) — expand children for each parent ID
       const parentIds = query.categoryIds.split(',').filter(Boolean);
       const children = await prisma.category.findMany({
         where: { parentId: { in: parentIds } },
@@ -169,7 +225,6 @@ export class TransactionService {
         where.categoryId = null;
         where.hasSplit = false;
       } else {
-        // Include all child categories so selecting a top-level filters all its sub-categories
         const children = await prisma.category.findMany({
           where: { parentId: query.categoryId },
           select: { id: true },
@@ -178,7 +233,6 @@ export class TransactionService {
         where.categoryId = ids.length === 1 ? ids[0] : { in: ids };
       }
     } else if (query.hasCategory === true) {
-      // A split transaction counts as categorized even though categoryId is null
       where.OR = [{ categoryId: { not: null } }, { hasSplit: true }];
     } else if (query.hasCategory === false) {
       where.categoryId = null;
@@ -191,40 +245,80 @@ export class TransactionService {
       };
     }
 
-    // Sum at parent transaction level, excluding transfers and excluded transactions.
-    // Done in JS so the transfer check (category.kind) uses a LEFT JOIN via findMany,
-    // avoiding potential aggregate + OR relation filter issues.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sumWhere: any = { ...where, isExcluded: false };
 
-    const [total, sumRows, rows] = await Promise.all([
-      prisma.transaction.count({ where }),
-      prisma.transaction.findMany({
-        where: sumWhere,
-        select: { amountMinor: true, category: { select: { kind: true } } },
-      }),
-      prisma.transaction.findMany({
-        where,
-        orderBy: query.sortBy === 'amount'
-          ? [{ amountMinor: query.sortDir === 'asc' ? 'asc' : 'desc' }, { postedDate: 'desc' }]
-          : [{ postedDate: query.sortDir === 'asc' ? 'asc' : 'desc' }, { createdAt: query.sortDir === 'asc' ? 'asc' : 'desc' }],
-        skip: (page - 1) * limit,
-        take: limit,
-        include: TX_INCLUDE,
-      }),
-    ]);
+    // Fetch rows for sum (all non-excluded) — decrypt amounts in JS
+    const sumRows = await prisma.transaction.findMany({
+      where: sumWhere,
+      select: { amountMinor: true, category: { select: { kind: true } } },
+    });
 
     let totalAmountMinor = 0;
     let totalExpenseMinor = 0;
     let totalIncomeMinor = 0;
     for (const tx of sumRows) {
       if (tx.category?.kind === 'transfer') continue;
-      totalAmountMinor += tx.amountMinor;
-      if (tx.amountMinor < 0) totalExpenseMinor += tx.amountMinor;
-      else totalIncomeMinor += tx.amountMinor;
+      const amt = this.decAmt(tx.amountMinor, householdId);
+      totalAmountMinor += amt;
+      if (amt < 0) totalExpenseMinor += amt;
+      else totalIncomeMinor += amt;
     }
 
-    const items: TransactionListItem[] = rows.map(txToListItem);
+    const needsSearchOrAmountSort = !!query.search || query.sortBy === 'amount';
+
+    let total: number;
+    let items: TransactionListItem[];
+
+    if (needsSearchOrAmountSort) {
+      // Fetch all rows, decrypt, filter by search, sort by amount if needed, then paginate in JS
+      const allRows = (await prisma.transaction.findMany({
+        where,
+        include: TX_INCLUDE,
+      })) as unknown as RawTxWithIncludes[];
+
+      let decrypted: DecryptedTxWithIncludes[] = allRows.map((r) => this.decryptTx(r, householdId));
+
+      if (query.search) {
+        const searchLower = query.search.toLowerCase();
+        decrypted = decrypted.filter((r) => r.merchant?.toLowerCase().includes(searchLower) ?? false);
+      }
+
+      if (query.sortBy === 'amount') {
+        const dir = query.sortDir === 'asc' ? 1 : -1;
+        decrypted.sort((a, b) => {
+          if (a.amountMinor !== b.amountMinor) return dir * (a.amountMinor - b.amountMinor);
+          return b.postedDate.getTime() - a.postedDate.getTime();
+        });
+      } else {
+        const dir = query.sortDir === 'asc' ? 1 : -1;
+        decrypted.sort((a, b) => {
+          const d = dir * (a.postedDate.getTime() - b.postedDate.getTime());
+          if (d !== 0) return d;
+          return dir * (a.createdAt.getTime() - b.createdAt.getTime());
+        });
+      }
+
+      total = decrypted.length;
+      items = decrypted.slice((page - 1) * limit, page * limit).map(txToListItem);
+    } else {
+      // Default: date sort with SQL pagination
+      const [totalCount, pageRows] = await Promise.all([
+        prisma.transaction.count({ where }),
+        prisma.transaction.findMany({
+          where,
+          orderBy: [
+            { postedDate: query.sortDir === 'asc' ? 'asc' : 'desc' },
+            { createdAt: query.sortDir === 'asc' ? 'asc' : 'desc' },
+          ],
+          skip: (page - 1) * limit,
+          take: limit,
+          include: TX_INCLUDE,
+        }) as unknown as Promise<RawTxWithIncludes[]>,
+      ]);
+      total = totalCount;
+      items = pageRows.map((r) => txToListItem(this.decryptTx(r, householdId)));
+    }
 
     return { items, total, totalAmountMinor, totalExpenseMinor, totalIncomeMinor, page, limit };
   }
@@ -241,7 +335,6 @@ export class TransactionService {
 
     if (visibleAccountIds.length === 0) return { classified: 0, total: 0 };
 
-    // Fetch everything needed in parallel — no per-transaction queries
     const [uncategorized, rules, transferCat, categorizedTxs] = await Promise.all([
       prisma.transaction.findMany({
         where: { accountId: { in: visibleAccountIds }, categoryId: null, hasSplit: false },
@@ -249,7 +342,6 @@ export class TransactionService {
       }),
       prisma.categoryRule.findMany({ where: { householdId } }),
       prisma.category.findFirst({ where: { householdId, kind: 'transfer', isSystem: true } }),
-      // Learn from transactions the user has already manually categorized
       prisma.transaction.findMany({
         where: { accountId: { in: visibleAccountIds }, categoryId: { not: null }, merchant: { not: null } },
         select: { merchant: true, categoryId: true },
@@ -258,20 +350,18 @@ export class TransactionService {
 
     if (uncategorized.length === 0) return { classified: 0, total: 0 };
 
-    // Build learned map: merchantRuleKey → most-used categoryId.
-    // Using merchantRuleKey (strips trailing numeric reference tokens) means
-    // "WF HOME MTG 06/09" and "WF HOME MTG 07/09" both map to key "WF HOME MTG"
-    // so one manual categorization classifies all months.
+    // Decrypt merchant names before rule matching
+    const learnedMap = new Map<string, string>();
     const merchantCatCounts = new Map<string, Map<string, number>>();
     for (const t of categorizedTxs) {
       if (!t.merchant || !t.categoryId) continue;
-      const key = merchantRuleKey(t.merchant);
+      const plainMerchant = this.encryption.decrypt(t.merchant, householdId);
+      const key = merchantRuleKey(plainMerchant);
       if (!key) continue;
       const m = merchantCatCounts.get(key) ?? new Map<string, number>();
       m.set(t.categoryId, (m.get(t.categoryId) ?? 0) + 1);
       merchantCatCounts.set(key, m);
     }
-    const learnedMap = new Map<string, string>();
     for (const [key, catCounts] of merchantCatCounts) {
       let best = '';
       let bestCount = 0;
@@ -281,14 +371,11 @@ export class TransactionService {
       if (best) learnedMap.set(key, best);
     }
 
-    // In-memory resolution: explicit rules → learned → transfer patterns
-    // Each stage uses multi-signal similarity scoring; returns the best match above threshold.
     const resolve = (merchantRaw: string | null): string | null => {
       if (!merchantRaw) return null;
       const ruleKey = merchantRuleKey(merchantRaw);
       if (!ruleKey) return null;
 
-      // 1. Explicit category rules — best-scoring match above threshold
       let bestScore = 0;
       let bestCatId: string | null = null;
       for (const rule of rules) {
@@ -297,7 +384,6 @@ export class TransactionService {
       }
       if (bestScore >= MERCHANT_MATCH_THRESHOLD && bestCatId) return bestCatId;
 
-      // 2. Learned from previous manual categorizations — best-scoring match above threshold
       bestScore = 0;
       bestCatId = null;
       for (const [knownKey, catId] of learnedMap) {
@@ -306,7 +392,6 @@ export class TransactionService {
       }
       if (bestScore >= MERCHANT_MATCH_THRESHOLD && bestCatId) return bestCatId;
 
-      // 3. Transfer pattern auto-detection
       if (transferCat && TRANSFER_PATTERNS.some((p) => p.test(ruleKey))) {
         return transferCat.id;
       }
@@ -314,10 +399,11 @@ export class TransactionService {
       return null;
     };
 
-    // Resolve all uncategorized transactions in memory, then bulk-update per category
-    const byCategoryId = new Map<string, string[]>(); // categoryId → txIds
+    const byCategoryId = new Map<string, string[]>();
     for (const tx of uncategorized) {
-      const catId = resolve(tx.merchant);
+      // Decrypt merchant before rule matching
+      const plainMerchant = tx.merchant ? this.encryption.decrypt(tx.merchant, householdId) : null;
+      const catId = resolve(plainMerchant);
       if (catId) {
         const ids = byCategoryId.get(catId) ?? [];
         ids.push(tx.id);
@@ -325,7 +411,6 @@ export class TransactionService {
       }
     }
 
-    // One updateMany per distinct category (vs N individual updates)
     await Promise.all(
       [...byCategoryId.entries()].map(([catId, ids]) =>
         prisma.transaction.updateMany({ where: { id: { in: ids } }, data: { categoryId: catId } }),
@@ -344,45 +429,39 @@ export class TransactionService {
     viewerUserId: string,
     body: RecategorizeTxBody,
   ): Promise<TransactionListItem> {
-    // Verify the transaction belongs to an account in this household and is visible
-    const tx = await prisma.transaction.findUnique({
+    const rawTx = await prisma.transaction.findUnique({
       where: { id: txId },
       include: {
         account: { select: { id: true, name: true, householdId: true, ownerUserId: true, visibility: true } },
         category: { select: { name: true, color: true } },
       },
     });
-    if (!tx || tx.account.householdId !== householdId) {
+    if (!rawTx || rawTx.account.householdId !== householdId) {
       throw new NotFoundException('Transaction not found');
     }
 
-    // Visibility check — viewer must be able to see line items
     const allAccounts = await prisma.account.findMany({
       where: { householdId },
       select: { id: true, ownerUserId: true, visibility: true },
     });
     const scope = buildScope(viewerUserId, householdId, 'household', allAccounts);
-    if (!canViewLineItems(scope, tx.accountId)) {
+    if (!canViewLineItems(scope, rawTx.accountId)) {
       throw new NotFoundException('Transaction not found');
     }
 
-    // Assigning a single category clears any existing split
-    if (tx.hasSplit) {
+    if (rawTx.hasSplit) {
       await prisma.transactionSplit.deleteMany({ where: { transactionId: txId } });
     }
 
-    // When moving a transaction OUT of the Transfer category, clear all transfer-linking state
-    const oldCat = tx.categoryId ? await prisma.category.findUnique({ where: { id: tx.categoryId } }) : null;
+    const oldCat = rawTx.categoryId ? await prisma.category.findUnique({ where: { id: rawTx.categoryId } }) : null;
     const newCat = body.categoryId ? await prisma.category.findUnique({ where: { id: body.categoryId } }) : null;
     const leavingTransfer = oldCat?.kind === 'transfer' && newCat?.kind !== 'transfer';
     if (leavingTransfer) {
-      // Remove pair (cascade deletes both sides' pair record)
       await prisma.transferPair.deleteMany({
         where: { OR: [{ debitTxId: txId }, { creditTxId: txId }] },
       });
     }
 
-    // Update category — also clear transfer state when leaving Transfer
     const updated = await prisma.transaction.update({
       where: { id: txId },
       data: {
@@ -391,11 +470,11 @@ export class TransactionService {
         ...(leavingTransfer ? { awaitingCounterpartAccountId: null, externalTransfer: false } : {}),
       },
       include: TX_INCLUDE,
-    });
+    }) as unknown as RawTxWithIncludes;
 
-    // Optionally create/update a category rule for this merchant
-    if (body.createRule && body.categoryId && tx.merchant) {
-      const ruleKey = merchantRuleKey(tx.merchant);
+    if (body.createRule && body.categoryId && rawTx.merchant) {
+      const plainMerchant = this.encryption.decrypt(rawTx.merchant, householdId);
+      const ruleKey = merchantRuleKey(plainMerchant);
       if (ruleKey) {
         const existing = await prisma.categoryRule.findFirst({
           where: { householdId, merchantMatch: ruleKey },
@@ -407,33 +486,29 @@ export class TransactionService {
           });
         } else {
           await prisma.categoryRule.create({
-            data: {
-              householdId,
-              merchantMatch: ruleKey,
-              categoryId: body.categoryId,
-              createdByUserId: viewerUserId,
-            },
+            data: { householdId, merchantMatch: ruleKey, categoryId: body.categoryId, createdByUserId: viewerUserId },
           });
         }
       }
     }
 
-    return txToListItem(updated);
+    return txToListItem(this.decryptTx(updated, householdId));
   }
 
-  // ── E5.3 — Get single transaction (for split page) ───────────────────────
+  // ── E5.3 — Get single transaction ────────────────────────────────────────
 
   async getTransaction(txId: string, householdId: string, viewerUserId: string): Promise<TransactionListItem> {
     const tx = await this.findVerifiedTx(txId, householdId, viewerUserId);
-    return txToListItem(tx);
+    return txToListItem(this.decryptTx(tx as unknown as RawTxWithIncludes, householdId));
   }
 
   // ── E5.4 — Split transaction across categories ───────────────────────────
 
   async setSplits(txId: string, householdId: string, viewerUserId: string, body: PutSplitsBody): Promise<TransactionListItem> {
     const tx = await this.findVerifiedTx(txId, householdId, viewerUserId);
+    const decAmount = this.decAmt(tx.amountMinor as unknown as string, householdId);
 
-    const totalMagnitude = Math.abs(tx.amountMinor);
+    const totalMagnitude = Math.abs(decAmount);
     const splitSum = body.splits.reduce((sum: number, s: { categoryId: string | null; amountMinor: number }) => sum + s.amountMinor, 0);
     if (splitSum !== totalMagnitude) {
       throw new BadRequestException(
@@ -441,8 +516,7 @@ export class TransactionService {
       );
     }
 
-    // All splits carry the same sign as the parent transaction
-    const sign = tx.amountMinor >= 0 ? 1 : -1;
+    const sign = decAmount >= 0 ? 1 : -1;
 
     await prisma.$transaction([
       prisma.transactionSplit.deleteMany({ where: { transactionId: txId } }),
@@ -471,8 +545,6 @@ export class TransactionService {
     return this.getTransaction(txId, householdId, viewerUserId);
   }
 
-  // ── Shared helpers ───────────────────────────────────────────────────────
-
   // ── E10.5 — Exclude / include a transaction from calculations ───────────
 
   async excludeTransaction(
@@ -482,12 +554,14 @@ export class TransactionService {
     body: ExcludeTransactionBody,
   ): Promise<TransactionListItem> {
     const tx = await this.findVerifiedTx(txId, householdId, viewerUserId);
+    const decAmount = this.decAmt(tx.amountMinor as unknown as string, householdId);
+    const decMerchant = this.decStr(tx.merchant as unknown as string | null, householdId);
 
     const updated = await prisma.transaction.update({
       where: { id: txId },
       data: { isExcluded: body.isExcluded },
       include: TX_INCLUDE,
-    });
+    }) as unknown as RawTxWithIncludes;
 
     await prisma.auditLog.create({
       data: {
@@ -496,19 +570,20 @@ export class TransactionService {
         action: body.isExcluded ? 'transaction.exclude' : 'transaction.include',
         targetType: 'Transaction',
         targetId: txId,
-        metadata: { merchant: tx.merchant, amountMinor: tx.amountMinor },
+        metadata: { merchant: decMerchant, amountMinor: decAmount },
       },
     });
 
-    return txToListItem(updated);
+    return txToListItem(this.decryptTx(updated, householdId));
   }
 
   // ── Delete transaction ───────────────────────────────────────────────────
 
   async deleteTransaction(txId: string, householdId: string, viewerUserId: string): Promise<void> {
     const tx = await this.findVerifiedTx(txId, householdId, viewerUserId);
+    const decAmount = this.decAmt(tx.amountMinor as unknown as string, householdId);
+    const decMerchant = this.decStr(tx.merchant as unknown as string | null, householdId);
 
-    // Delete splits first (no cascade), then the transaction itself.
     await prisma.$transaction([
       prisma.transactionSplit.deleteMany({ where: { transactionId: txId } }),
       prisma.transaction.delete({ where: { id: txId } }),
@@ -521,7 +596,7 @@ export class TransactionService {
         action: 'transaction.delete',
         targetType: 'Transaction',
         targetId: txId,
-        metadata: { merchant: tx.merchant, amountMinor: tx.amountMinor, postedDate: tx.postedDate },
+        metadata: { merchant: decMerchant, amountMinor: decAmount, postedDate: tx.postedDate },
       },
     });
   }
@@ -563,9 +638,13 @@ export class TransactionService {
     if (!debit || debit.account.householdId !== householdId) throw new NotFoundException('Debit transaction not found');
     if (!credit || credit.account.householdId !== householdId) throw new NotFoundException('Credit transaction not found');
     if (debit.accountId === credit.accountId) throw new BadRequestException('Transactions must be in different accounts');
-    if (debit.amountMinor >= 0) throw new BadRequestException('debitTxId must be a negative (outflow) transaction');
-    if (credit.amountMinor <= 0) throw new BadRequestException('creditTxId must be a positive (inflow) transaction');
-    if (Math.abs(debit.amountMinor) !== credit.amountMinor) throw new BadRequestException('Amounts do not match');
+
+    const debitAmt = this.decAmt(debit.amountMinor, householdId);
+    const creditAmt = this.decAmt(credit.amountMinor, householdId);
+
+    if (debitAmt >= 0) throw new BadRequestException('debitTxId must be a negative (outflow) transaction');
+    if (creditAmt <= 0) throw new BadRequestException('creditTxId must be a positive (inflow) transaction');
+    if (Math.abs(debitAmt) !== creditAmt) throw new BadRequestException('Amounts do not match');
 
     const existing = await prisma.transferPair.findFirst({
       where: { OR: [{ debitTxId }, { creditTxId }] },
@@ -573,7 +652,6 @@ export class TransactionService {
     if (existing) throw new BadRequestException('One or both transactions are already linked');
 
     const pair = await prisma.transferPair.create({ data: { debitTxId, creditTxId } });
-    // Clear awaiting flags on both sides
     await prisma.transaction.updateMany({
       where: { id: { in: [debitTxId, creditTxId] } },
       data: { awaitingCounterpartAccountId: null },
@@ -600,7 +678,6 @@ export class TransactionService {
   ): Promise<TransferRouteResponse[]> {
     const results: TransferRouteResponse[] = [];
     for (const r of routes) {
-      // Validate account belongs to household
       const src = await prisma.account.findFirst({ where: { id: r.sourceAccountId, householdId } });
       if (!src) throw new NotFoundException(`Account ${r.sourceAccountId} not found`);
       if (r.counterpartAccountId) {
@@ -608,7 +685,6 @@ export class TransactionService {
         if (!cpt) throw new NotFoundException(`Account ${r.counterpartAccountId} not found`);
       }
 
-      // When re-routing a specific transaction, clear its existing transfer state first
       if (r.txId) {
         await prisma.transferPair.deleteMany({
           where: { OR: [{ debitTxId: r.txId }, { creditTxId: r.txId }] },
@@ -626,17 +702,20 @@ export class TransactionService {
         include: { counterpartAccount: { select: { name: true } } },
       });
 
+      // Decrypt account name for response
+      const counterpartAccountName = route.counterpartAccount?.name
+        ? this.encryption.decrypt(route.counterpartAccount.name, householdId)
+        : null;
+
       results.push({
         id: route.id,
         sourceAccountId: route.sourceAccountId,
         merchantMatch: route.merchantMatch,
         counterpartAccountId: route.counterpartAccountId,
-        counterpartAccountName: route.counterpartAccount?.name ?? null,
+        counterpartAccountName,
       });
 
-      // Apply this route immediately to existing unlinked transfer transactions.
-      // Primary path: if a specific txId was supplied (per-row routing from UI), target it directly.
-      // Fallback: broad merchant scan (case-insensitive) for any matching unlinked transactions.
+      // Apply route to existing unlinked transactions — fetch by accountId then match merchant in JS
       const txsToApply: { id: string; accountId: string; amountMinor: number; postedDate: Date }[] = [];
 
       if (r.txId) {
@@ -649,36 +728,62 @@ export class TransactionService {
             awaitingCounterpartAccountId: null,
             externalTransfer: false,
           },
+          select: { id: true, accountId: true, amountMinor: true, postedDate: true },
         });
-        if (specific) txsToApply.push(specific);
+        if (specific) {
+          txsToApply.push({
+            ...specific,
+            amountMinor: this.decAmt(specific.amountMinor, householdId),
+          });
+        }
       }
 
-      // Also scan for any other unlinked transactions that match the merchant pattern
+      // Broad merchant scan: fetch candidates by account and filter by decrypted merchantNormalized
       if (r.merchantMatch) {
-        const broad = await prisma.transaction.findMany({
+        const pattern = r.merchantMatch.toLowerCase().trim();
+        const candidates = await prisma.transaction.findMany({
           where: {
             accountId: r.sourceAccountId,
-            merchantNormalized: { contains: r.merchantMatch.toLowerCase(), mode: 'insensitive' },
             ...(r.txId ? { id: { not: r.txId } } : {}),
             transferPairAsDebit: null,
             transferPairAsCredit: null,
             awaitingCounterpartAccountId: null,
             externalTransfer: false,
           },
+          select: { id: true, accountId: true, amountMinor: true, postedDate: true, merchantNormalized: true, merchant: true },
         });
-        txsToApply.push(...broad);
+
+        for (const c of candidates) {
+          const normPlain = c.merchantNormalized
+            ? this.encryption.decrypt(c.merchantNormalized, householdId)
+            : null;
+          const merchantPlain = c.merchant
+            ? this.encryption.decrypt(c.merchant, householdId)
+            : null;
+          const matches = normPlain
+            ? normPlain.includes(pattern)
+            : merchantPlain
+            ? merchantPlain.toLowerCase().includes(pattern)
+            : false;
+          if (matches) {
+            txsToApply.push({
+              id: c.id,
+              accountId: c.accountId,
+              amountMinor: this.decAmt(c.amountMinor, householdId),
+              postedDate: c.postedDate,
+            });
+          }
+        }
       }
 
       for (const tx of txsToApply) {
         if (!r.counterpartAccountId) {
           await prisma.transaction.update({ where: { id: tx.id }, data: { externalTransfer: true } });
         } else {
-          await this.tryLink(tx, r.counterpartAccountId);
+          await this.tryLink(tx, r.counterpartAccountId, householdId);
         }
       }
 
-      // Ensure future imports with this merchant are auto-categorized as Transfer so that
-      // resolveTransferLinks picks them up during the import commit step.
       if (userId && r.merchantMatch) {
         const transferCat = await prisma.category.findFirst({ where: { householdId, kind: 'transfer', isSystem: true } });
         if (transferCat) {
@@ -703,8 +808,6 @@ export class TransactionService {
     await prisma.transferRoute.delete({ where: { id: routeId } });
   }
 
-  // Apply all known routing rules to every currently-unrouted transfer transaction in the household.
-  // Used by the "Auto-route all" action on the Needs Routing tab.
   async resolveAllRoutes(householdId: string): Promise<{ resolved: number }> {
     const transferCat = await prisma.category.findFirst({ where: { householdId, kind: 'transfer', isSystem: true } });
     if (!transferCat) return { resolved: 0 };
@@ -726,7 +829,6 @@ export class TransactionService {
     const before = unroutedTxs.length;
     await this.resolveTransferLinks(householdId, unroutedTxs.map((t) => t.id));
 
-    // Count how many are now resolved (have a pair, awaiting, or external flag)
     const stillUnrouted = await prisma.transaction.count({
       where: {
         id: { in: unroutedTxs.map((t) => t.id) },
@@ -760,27 +862,36 @@ export class TransactionService {
     const needsRouting: NeedsRoutingItem[] = [];
 
     for (const tx of newTxs) {
-      // Already linked — skip
+      const txAmount = this.decAmt(tx.amountMinor, householdId);
+      const txMerchant = this.decStr(tx.merchant, householdId);
+      const txMerchantNorm = this.decStr(tx.merchantNormalized, householdId);
+
       const alreadyLinked = await prisma.transferPair.findFirst({
         where: { OR: [{ debitTxId: tx.id }, { creditTxId: tx.id }] },
       });
       if (alreadyLinked) continue;
 
-      // Step B: check if any existing transaction is waiting for this account
+      // Step B: find transaction awaiting this account with matching amount
       const twoDay = 2 * 24 * 60 * 60 * 1000;
       const dateFrom = new Date(tx.postedDate.getTime() - twoDay);
       const dateTo = new Date(tx.postedDate.getTime() + twoDay);
-      const awaitingMatch = await prisma.transaction.findFirst({
+
+      const awaitingCandidates = await prisma.transaction.findMany({
         where: {
           awaitingCounterpartAccountId: tx.accountId,
-          amountMinor: -tx.amountMinor,
           postedDate: { gte: dateFrom, lte: dateTo },
           transferPairAsDebit: null,
           transferPairAsCredit: null,
         },
+        select: { id: true, amountMinor: true },
       });
+
+      const awaitingMatch = awaitingCandidates.find(
+        (c) => this.decAmt(c.amountMinor, householdId) === -txAmount,
+      );
+
       if (awaitingMatch) {
-        const [debitId, creditId] = tx.amountMinor > 0
+        const [debitId, creditId] = txAmount > 0
           ? [awaitingMatch.id, tx.id]
           : [tx.id, awaitingMatch.id];
         await prisma.transferPair.create({ data: { debitTxId: debitId, creditTxId: creditId } });
@@ -791,34 +902,33 @@ export class TransactionService {
         continue;
       }
 
-      // Step A: apply known routing rules.
-      // Compare merchantNormalized (already lowercased/cleaned at import time) against
-      // the lowercased+trimmed merchantMatch so the comparison is case-insensitive and
-      // robust to whitespace differences between raw merchant strings.
+      // Step A: apply known routing rules (match against decrypted merchantNormalized)
       const matchedRoute = routes.find((r) => {
         if (r.sourceAccountId !== tx.accountId) return false;
         const pattern = r.merchantMatch.toLowerCase().trim();
-        if (tx.merchantNormalized) return tx.merchantNormalized.includes(pattern);
-        if (tx.merchant) return tx.merchant.toLowerCase().includes(pattern);
+        if (txMerchantNorm) return txMerchantNorm.includes(pattern);
+        if (txMerchant) return txMerchant.toLowerCase().includes(pattern);
         return false;
       });
 
       if (matchedRoute) {
         if (!matchedRoute.counterpartAccountId) {
-          // External / not tracked — mark so it disappears from "Needs routing" tab
           await prisma.transaction.update({ where: { id: tx.id }, data: { externalTransfer: true } });
           continue;
         }
-        await this.tryLink(tx, matchedRoute.counterpartAccountId);
+        await this.tryLink(
+          { id: tx.id, accountId: tx.accountId, amountMinor: txAmount, postedDate: tx.postedDate },
+          matchedRoute.counterpartAccountId,
+          householdId,
+        );
         continue;
       }
 
-      // Step C: no routing rule — collect for user assignment, with optional suggestion
-      const suggestion = await prisma.transaction.findFirst({
+      // Step C: no routing rule — find a suggestion by date + amount
+      const suggestionCandidates = await prisma.transaction.findMany({
         where: {
           account: { householdId },
           accountId: { not: tx.accountId },
-          amountMinor: -tx.amountMinor,
           postedDate: { gte: dateFrom, lte: dateTo },
           categoryId: transferCat.id,
           transferPairAsDebit: null,
@@ -827,13 +937,19 @@ export class TransactionService {
         include: { account: { select: { name: true } } },
       });
 
+      const suggestion = suggestionCandidates.find(
+        (c) => this.decAmt(c.amountMinor, householdId) === -txAmount,
+      );
+
       needsRouting.push({
         txId: tx.id,
         postedDate: tx.postedDate.toISOString().slice(0, 10),
-        merchant: tx.merchant,
-        amountMinor: tx.amountMinor,
+        merchant: txMerchant,
+        amountMinor: txAmount,
         suggestedCounterpartAccountId: suggestion?.accountId ?? null,
-        suggestedCounterpartAccountName: suggestion?.account.name ?? null,
+        suggestedCounterpartAccountName: suggestion
+          ? this.encryption.decrypt(suggestion.account.name, householdId)
+          : null,
       });
     }
 
@@ -843,20 +959,26 @@ export class TransactionService {
   private async tryLink(
     tx: { id: string; accountId: string; amountMinor: number; postedDate: Date },
     counterpartAccountId: string,
+    householdId: string,
   ): Promise<void> {
     const twoDay = 2 * 24 * 60 * 60 * 1000;
     const dateFrom = new Date(tx.postedDate.getTime() - twoDay);
     const dateTo = new Date(tx.postedDate.getTime() + twoDay);
 
-    const candidates = await prisma.transaction.findMany({
+    // Fetch candidates by date range; match amount after decryption
+    const rawCandidates = await prisma.transaction.findMany({
       where: {
         accountId: counterpartAccountId,
-        amountMinor: -tx.amountMinor,
         postedDate: { gte: dateFrom, lte: dateTo },
         transferPairAsDebit: null,
         transferPairAsCredit: null,
       },
+      select: { id: true, amountMinor: true },
     });
+
+    const candidates = rawCandidates.filter(
+      (c) => this.decAmt(c.amountMinor, householdId) === -tx.amountMinor,
+    );
 
     if (candidates.length === 1) {
       const [debitId, creditId] = tx.amountMinor < 0
@@ -868,7 +990,6 @@ export class TransactionService {
         data: { awaitingCounterpartAccountId: null },
       });
     } else {
-      // Counterpart not yet imported (or ambiguous) — mark as awaiting
       await prisma.transaction.update({
         where: { id: tx.id },
         data: { awaitingCounterpartAccountId: counterpartAccountId },
