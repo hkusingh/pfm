@@ -32,6 +32,7 @@ class _State extends ConsumerState<DashboardScreen> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() { _loading = true; _error = null; });
     try {
       final api = ref.read(apiProvider);
@@ -39,18 +40,20 @@ class _State extends ConsumerState<DashboardScreen> {
       _household = await api.get('/households/me', (d) => Household.fromJson(d as Map<String, dynamic>));
       final hid = _household!.id;
 
+      final range = periodToRange(_period);
       final results = await Future.wait([
         api.get('/households/$hid/dashboard/summary',
           (d) => DashboardSummary.fromJson(d as Map<String, dynamic>),
-          params: {'period': _period, 'view': _view}),
-        api.get('/households/$hid/spending-by-category',
-          (d) => (d['items'] as List).map((e) => SpendingCategory.fromJson(e as Map<String, dynamic>)).toList(),
-          params: {'period': _period, 'view': _view}),
+          params: {'from': range['from'], 'to': range['to'], 'view': _view}),
+        api.get('/households/$hid/dashboard/spending-by-category',
+          (d) => (d as List).map((e) => SpendingCategory.fromJson(e as Map<String, dynamic>)).toList(),
+          params: {'from': range['from'], 'to': range['to'], 'view': _view}),
         api.get('/households/$hid/budgets',
           (d) => (d['items'] as List).map((e) => BudgetItem.fromJson(e as Map<String, dynamic>)).toList(),
           params: {'period': _period}),
       ]);
 
+      if (!mounted) return;
       setState(() {
         _summary = results[0] as DashboardSummary;
         _spendingByCategory = results[1] as List<SpendingCategory>;
@@ -59,6 +62,7 @@ class _State extends ConsumerState<DashboardScreen> {
         _loading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() { _error = e.toString(); _loading = false; });
     }
   }
@@ -116,7 +120,7 @@ class _State extends ConsumerState<DashboardScreen> {
                     ),
                   )).toList(),
                 ),
-              )),
+              ))),
 
               // KPI cards
               if (_summary != null) SliverToBoxAdapter(child: Padding(

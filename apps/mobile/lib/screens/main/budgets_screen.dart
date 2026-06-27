@@ -17,6 +17,7 @@ class _State extends ConsumerState<BudgetsScreen> {
   String _currency = 'USD';
   List<BudgetItem> _expenseGroups = [];
   List<IncomeSummaryItem> _incomeItems = [];
+  List<Map<String, dynamic>> _categories = [];
   int _sinkingTotal = 0;
   bool _loading = true;
   String? _error;
@@ -27,6 +28,7 @@ class _State extends ConsumerState<BudgetsScreen> {
   void initState() { super.initState(); _period = currentPeriod(); _load(); }
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() { _loading = true; _error = null; });
     try {
       final api = ref.read(apiProvider);
@@ -43,17 +45,23 @@ class _State extends ConsumerState<BudgetsScreen> {
         api.get('/households/${hh.id}/sinking-funds',
           (d) => (d as List).map((e) => (e as Map<String, dynamic>)['reserveBalanceMinor'] as int? ?? 0).fold(0, (a, b) => a + b),
           params: {}),
+        api.get('/households/${hh.id}/categories',
+          (d) => (d as List).cast<Map<String, dynamic>>(),
+          params: {}),
       ]);
 
+      if (!mounted) return;
       setState(() {
         _expenseGroups = (results[0] as List<BudgetItem>)
           .where((i) => i.parentId == null && i.kind == 'expense').toList()
           ..sort((a, b) => b.budgetMinor.compareTo(a.budgetMinor));
         _incomeItems = results[1] as List<IncomeSummaryItem>;
         _sinkingTotal = results[2] as int;
+        _categories = results[3] as List<Map<String, dynamic>>;
         _loading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() { _error = e.toString(); _loading = false; });
     }
   }
@@ -66,6 +74,58 @@ class _State extends ConsumerState<BudgetsScreen> {
     return AppColors.accent;
   }
 
+  Future<void> _showEditSheet({required String categoryId, required String categoryName, required int currentMinor}) async {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => _EditBudgetSheet(
+        categoryId: categoryId,
+        categoryName: categoryName,
+        currentMinor: currentMinor,
+        period: _period,
+        currency: _currency,
+        onSave: (amountMinor) => _saveBudget(categoryId: categoryId, amountMinor: amountMinor),
+      ),
+    );
+  }
+
+  Future<void> _showAddSheet() async {
+    final expenseCats = _categories.where((c) =>
+      (c['kind'] as String? ?? 'expense') == 'expense' && c['parentId'] == null
+    ).toList();
+
+    if (expenseCats.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No expense categories found')));
+      return;
+    }
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => _AddBudgetSheet(
+        categories: expenseCats,
+        currency: _currency,
+        onSave: (categoryId, amountMinor) => _saveBudget(categoryId: categoryId, amountMinor: amountMinor),
+      ),
+    );
+  }
+
+  Future<void> _saveBudget({required String categoryId, required int amountMinor}) async {
+    try {
+      final api = ref.read(apiProvider);
+      await api.put('/households/$_hid/budgets', (d) => d,
+        body: {'categoryId': categoryId, 'period': _period, 'amountMinor': amountMinor});
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save: $e'), backgroundColor: AppColors.danger));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final incomeReceived = _incomeItems.fold(0, (s, i) => s + i.receivedMinor);
@@ -73,6 +133,11 @@ class _State extends ConsumerState<BudgetsScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.bg,
+      floatingActionButton: _hid == null ? null : FloatingActionButton(
+        onPressed: _showAddSheet,
+        backgroundColor: AppColors.primary,
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
       body: SafeArea(child: _loading
         ? const Center(child: CircularProgressIndicator())
         : _error != null
@@ -139,6 +204,11 @@ class _State extends ConsumerState<BudgetsScreen> {
                       if (_expanded.contains(item.categoryId)) _expanded.remove(item.categoryId);
                       else _expanded.add(item.categoryId);
                     }) : null,
+                    onEdit: item.children.isEmpty ? () => _showEditSheet(
+                      categoryId: item.categoryId,
+                      categoryName: item.categoryName,
+                      currentMinor: item.budgetMinor,
+                    ) : null,
                     children: item.children.map((child) => Padding(
                       padding: const EdgeInsets.only(left: 16, top: 8),
                       child: _CategoryRow(
@@ -148,6 +218,11 @@ class _State extends ConsumerState<BudgetsScreen> {
                         progress: child.spentRatio,
                         barColor: _barColor(child.spentRatio),
                         small: true,
+                        onEdit: () => _showEditSheet(
+                          categoryId: child.categoryId,
+                          categoryName: child.categoryName,
+                          currentMinor: child.budgetMinor,
+                        ),
                       ),
                     )).toList(),
                   ),
@@ -167,17 +242,134 @@ class _State extends ConsumerState<BudgetsScreen> {
                   child: Row(children: [
                     const Icon(Icons.savings_outlined, color: AppColors.success, size: 20),
                     const SizedBox(width: 10),
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('Sinking funds — ${fmtMinor(_sinkingTotal, currency: _currency)} reserved',
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.success)),
-                    ])),
+                    Expanded(child: Text('Sinking funds — ${fmtMinor(_sinkingTotal, currency: _currency)} reserved',
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.success))),
                   ]),
                 ),
               )),
 
-              const SliverToBoxAdapter(child: SizedBox(height: 16)),
+              const SliverToBoxAdapter(child: SizedBox(height: 80)),
             ])),
       ),
+    );
+  }
+}
+
+// ── Edit budget bottom sheet ──────────────────────────────────────────────────
+
+class _EditBudgetSheet extends StatefulWidget {
+  final String categoryId;
+  final String categoryName;
+  final int currentMinor;
+  final String period;
+  final String currency;
+  final Future<void> Function(int amountMinor) onSave;
+  const _EditBudgetSheet({required this.categoryId, required this.categoryName,
+    required this.currentMinor, required this.period, required this.currency, required this.onSave});
+  @override State<_EditBudgetSheet> createState() => _EditBudgetSheetState();
+}
+
+class _EditBudgetSheetState extends State<_EditBudgetSheet> {
+  late final TextEditingController _ctrl;
+  @override void initState() {
+    super.initState();
+    _ctrl = TextEditingController(
+      text: widget.currentMinor > 0 ? (widget.currentMinor / 100).toStringAsFixed(0) : '',
+    );
+  }
+  @override void dispose() { _ctrl.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(left: 24, right: 24, top: 24,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24),
+      child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('Set budget — ${widget.categoryName}',
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        Text('Applies to ${widget.period}. Enter amount in ${widget.currency}.',
+          style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+        const SizedBox(height: 20),
+        TextField(
+          controller: _ctrl,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: false),
+          decoration: InputDecoration(
+            prefixText: widget.currency == 'USD' ? '\$ ' : '${widget.currency} ',
+            hintText: '0',
+          ),
+        ),
+        const SizedBox(height: 16),
+        ElevatedButton(
+          onPressed: () {
+            final amount = int.tryParse(_ctrl.text.replaceAll(',', '')) ?? 0;
+            Navigator.pop(context);
+            widget.onSave(amount * 100);
+          },
+          child: const Text('Save budget'),
+        ),
+      ])),
+    );
+  }
+}
+
+// ── Add budget bottom sheet ───────────────────────────────────────────────────
+
+class _AddBudgetSheet extends StatefulWidget {
+  final List<Map<String, dynamic>> categories;
+  final String currency;
+  final Future<void> Function(String categoryId, int amountMinor) onSave;
+  const _AddBudgetSheet({required this.categories, required this.currency, required this.onSave});
+  @override State<_AddBudgetSheet> createState() => _AddBudgetSheetState();
+}
+
+class _AddBudgetSheetState extends State<_AddBudgetSheet> {
+  Map<String, dynamic>? _selected;
+  late final TextEditingController _ctrl;
+  @override void initState() { super.initState(); _ctrl = TextEditingController(); }
+  @override void dispose() { _ctrl.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(left: 24, right: 24, top: 24,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24),
+      child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Text('Add budget', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 16),
+        DropdownButtonFormField<Map<String, dynamic>>(
+          value: _selected,
+          hint: const Text('Select category'),
+          decoration: const InputDecoration(labelText: 'Category'),
+          items: widget.categories.map((c) => DropdownMenuItem(
+            value: c,
+            child: Text(c['name'] as String? ?? ''),
+          )).toList(),
+          onChanged: (v) => setState(() => _selected = v),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _ctrl,
+          keyboardType: const TextInputType.numberWithOptions(decimal: false),
+          decoration: InputDecoration(
+            labelText: 'Amount',
+            prefixText: widget.currency == 'USD' ? '\$ ' : '${widget.currency} ',
+            hintText: '0',
+          ),
+        ),
+        const SizedBox(height: 16),
+        ElevatedButton(
+          onPressed: _selected == null ? null : () {
+            final amount = int.tryParse(_ctrl.text.replaceAll(',', '')) ?? 0;
+            Navigator.pop(context);
+            widget.onSave(_selected!['id'] as String, amount * 100);
+          },
+          child: const Text('Add budget'),
+        ),
+      ])),
     );
   }
 }
@@ -190,13 +382,15 @@ class _CategoryRow extends StatelessWidget {
   final Color barColor;
   final bool isExpanded;
   final VoidCallback? onTap;
+  final VoidCallback? onEdit;
   final List<Widget> children;
   final bool small;
 
   const _CategoryRow({
     required this.label, required this.left, required this.right,
     required this.progress, required this.barColor,
-    this.isExpanded = false, this.onTap, this.children = const [], this.small = false,
+    this.isExpanded = false, this.onTap, this.onEdit,
+    this.children = const [], this.small = false,
   });
 
   @override
@@ -204,18 +398,30 @@ class _CategoryRow extends StatelessWidget {
     return Card(child: Padding(
       padding: EdgeInsets.all(small ? 10 : 14),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        GestureDetector(
-          onTap: onTap,
-          child: Row(children: [
-            if (children.isNotEmpty) ...[
-              AnimatedRotation(turns: isExpanded ? 0 : -0.25, duration: const Duration(milliseconds: 150),
+        Row(children: [
+          if (children.isNotEmpty) ...[
+            GestureDetector(
+              onTap: onTap,
+              child: AnimatedRotation(turns: isExpanded ? 0 : -0.25, duration: const Duration(milliseconds: 150),
                 child: const Icon(Icons.expand_more, size: 18, color: AppColors.textSecondary)),
-              const SizedBox(width: 6),
-            ],
-            Expanded(child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, fontSize: small ? 13 : 14))),
-            Text('$left / $right', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-          ]),
-        ),
+            ),
+            const SizedBox(width: 6),
+          ],
+          Expanded(
+            child: GestureDetector(
+              onTap: onTap,
+              child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, fontSize: small ? 13 : 14)),
+            ),
+          ),
+          Text('$left / $right', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          if (onEdit != null) ...[
+            const SizedBox(width: 4),
+            GestureDetector(
+              onTap: onEdit,
+              child: const Icon(Icons.edit_outlined, size: 16, color: AppColors.textSecondary),
+            ),
+          ],
+        ]),
         const SizedBox(height: 8),
         BudgetBar(progress: progress, height: small ? 6 : 8),
         if (isExpanded && children.isNotEmpty) ...children,

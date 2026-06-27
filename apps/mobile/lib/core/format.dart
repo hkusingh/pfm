@@ -35,6 +35,16 @@ String shiftPeriod(String period, int delta) {
   return '${dt.year}-${dt.month.toString().padLeft(2, '0')}';
 }
 
+Map<String, String> periodToRange(String period) {
+  final parts = period.split('-');
+  final year = int.parse(parts[0]);
+  final month = int.parse(parts[1]);
+  final lastDay = DateTime(year, month + 1, 0).day;
+  final mm = month.toString().padLeft(2, '0');
+  final dd = lastDay.toString().padLeft(2, '0');
+  return {'from': '$year-$mm-01', 'to': '$year-$mm-$dd'};
+}
+
 String greeting() {
   final h = DateTime.now().hour;
   if (h < 12) return 'Good morning';

@@ -22,10 +22,13 @@ class _State extends ConsumerState<MfaVerifyScreen> {
     try {
       final api = ref.read(apiProvider);
       final resp = await api.post<Map<String, dynamic>>(
-        '/auth/mfa/verify', (d) => d as Map<String, dynamic>,
-        body: {'token': _otp.text, 'mfaToken': widget.mfaToken},
+        '/mfa/verify', (d) => d as Map<String, dynamic>,
+        body: {'code': _otp.text, 'mfaChallengeToken': widget.mfaToken},
       );
-      await ref.read(authProvider).setTokens(resp['accessToken'] as String, resp['refreshToken'] as String);
+      final access = resp['accessToken'] as String?;
+      final refresh = resp['refreshToken'] as String?;
+      if (access == null || refresh == null) throw Exception('Unexpected MFA response');
+      await ref.read(authProvider).setTokens(access, refresh);
     } catch (e) {
       setState(() { _error = e.toString(); _loading = false; });
     }
