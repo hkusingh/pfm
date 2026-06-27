@@ -31,48 +31,68 @@ export function AdminLayout() {
     const refreshToken = localStorage.getItem('refreshToken');
     if (refreshToken) api.post('/auth/logout', { refreshToken }).catch(() => undefined);
     clearTokens();
-    navigate('/login');
+    navigate('/');
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar */}
-      <aside className="w-56 flex-shrink-0 bg-slate-900 text-white flex flex-col">
-        <div className="h-14 flex items-center px-5 border-b border-slate-700">
-          <span className="font-bold text-sm tracking-wide text-slate-300 uppercase">Admin</span>
+    <div className="min-h-screen flex flex-col bg-gray-50">
+
+      {/* Yellow admin banner */}
+      <div className="flex items-center justify-between px-6 py-2.5 flex-shrink-0"
+        style={{ background: '#FEF08A', borderBottom: '1px solid #EAB308' }}>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-bold" style={{ color: '#713F12' }}>
+            ⚠ Admin console — {me.email}
+          </span>
         </div>
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          {links.map((l) => (
-            <NavLink
-              key={l.to}
-              to={l.to}
-              className={({ isActive }) =>
-                `block px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-blue-600 text-white'
-                    : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-                }`
-              }
-            >
-              {l.label}
-            </NavLink>
-          ))}
-        </nav>
-        <div className="px-4 py-3 border-t border-slate-700">
-          <p className="text-xs text-slate-500 truncate">{me.email}</p>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors"
+            style={{ color: '#713F12', background: '#FDE047', border: '1px solid #EAB308' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#FACC15')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = '#FDE047')}
+          >
+            ← Back to app
+          </button>
           <button
             onClick={handleSignOut}
-            className="mt-1 text-xs text-slate-500 hover:text-white transition-colors"
+            className="text-sm font-medium transition-colors"
+            style={{ color: '#92400E' }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = '#451A03')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = '#92400E')}
           >
             Sign out
           </button>
         </div>
-      </aside>
+      </div>
 
-      {/* Content */}
-      <main className="flex-1 overflow-auto">
-        <Outlet />
-      </main>
+      {/* Body: sidebar + content */}
+      <div className="flex flex-1 min-h-0">
+        <aside className="w-52 flex-shrink-0 flex flex-col" style={{ background: '#1e293b', borderRight: '1px solid #334155' }}>
+          <nav className="flex-1 px-3 py-4 space-y-1">
+            {links.map((l) => (
+              <NavLink
+                key={l.to}
+                to={l.to}
+                className={({ isActive }) =>
+                  `block px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-yellow-400 text-slate-900'
+                      : 'text-slate-400 hover:bg-slate-700 hover:text-white'
+                  }`
+                }
+              >
+                {l.label}
+              </NavLink>
+            ))}
+          </nav>
+        </aside>
+
+        <main className="flex-1 overflow-auto">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

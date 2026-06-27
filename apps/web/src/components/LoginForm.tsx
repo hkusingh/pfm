@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button, FormField } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
@@ -13,8 +13,15 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [policyMode, setPolicyMode] = useState<string>('admin_invite');
   const navigate = useNavigate();
   const { setTokens } = useAuth();
+
+  useEffect(() => {
+    api.get<{ mode: string }>('/auth/registration-policy')
+      .then((r) => setPolicyMode(r.mode))
+      .catch(() => undefined);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -72,6 +79,11 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
         <Link to="/forgot-password" className="hover:text-gray-700 hover:underline">
           Forgot password?
         </Link>
+        {policyMode === 'open' && (
+          <Link to="/signup" className="hover:text-gray-700 hover:underline">
+            Create account
+          </Link>
+        )}
       </div>
     </form>
   );

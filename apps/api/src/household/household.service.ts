@@ -52,13 +52,16 @@ export class HouseholdService {
     name: string;
     baseCurrency: string;
     monthStartDay: number;
+    mfaIntervalDays: number;
     createdAt: Date;
+    [key: string]: unknown;
   }): HouseholdResponse {
     return {
       id: h.id,
       name: h.name,
       baseCurrency: h.baseCurrency,
       monthStartDay: h.monthStartDay,
+      mfaIntervalDays: h.mfaIntervalDays,
       createdAt: h.createdAt.toISOString(),
     };
   }
@@ -130,6 +133,7 @@ export class HouseholdService {
         ...(body.name !== undefined && { name: body.name }),
         ...(body.baseCurrency !== undefined && { baseCurrency: body.baseCurrency }),
         ...(body.monthStartDay !== undefined && { monthStartDay: body.monthStartDay }),
+        ...(body.mfaIntervalDays !== undefined && { mfaIntervalDays: body.mfaIntervalDays }),
       },
     });
 

@@ -261,6 +261,15 @@ export class AuthService {
 
   // Issues a read-only 2-hour demo token scoped to the seeded demo user.
   // No session record is created — demo sessions cannot be refreshed.
+  async getRegistrationPolicy(): Promise<{ mode: string }> {
+    try {
+      const policy = await prisma.registrationPolicy.findUniqueOrThrow({ where: { id: 1 } });
+      return { mode: policy.mode };
+    } catch {
+      return { mode: 'admin_invite' };
+    }
+  }
+
   async startDemo(): Promise<{ accessToken: string; expiresIn: number }> {
     const demoUser = await prisma.user.findUnique({
       where: { email: 'demo@demo.pfm.invalid' },

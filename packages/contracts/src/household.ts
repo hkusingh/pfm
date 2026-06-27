@@ -16,6 +16,7 @@ export const UpdateHouseholdBodySchema = z.object({
   name: z.string().min(1).max(100).trim().optional(),
   baseCurrency: z.enum(SUPPORTED_CURRENCIES).optional(),
   monthStartDay: z.number().int().min(1).max(28).optional(),
+  mfaIntervalDays: z.number().int().min(0).max(365).optional(),
 });
 
 export type UpdateHouseholdBody = z.infer<typeof UpdateHouseholdBodySchema>;
@@ -25,6 +26,7 @@ export const HouseholdResponseSchema = z.object({
   name: z.string(),
   baseCurrency: z.string(),
   monthStartDay: z.number(),
+  mfaIntervalDays: z.number(),
   createdAt: z.string(),
 });
 

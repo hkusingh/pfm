@@ -165,11 +165,19 @@ export class MfaService {
     const pair = await this.tokens.issueTokenPair(user.id, user.email, true);
 
     if (body.trustDevice) {
-      const rawToken = randomBytes(32).toString('hex');
-      const tokenHash = createHash('sha256').update(rawToken).digest('hex');
-      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
-      await prisma.trustedDevice.create({ data: { userId, tokenHash, expiresAt } });
-      return { ...pair, deviceToken: rawToken };
+      // Use the household's configured MFA interval (0 = every login, skip trust)
+      const membership = await prisma.membership.findFirst({
+        where: { userId, status: 'active' },
+        include: { household: { select: { mfaIntervalDays: true } } },
+      });
+      const intervalDays = membership?.household.mfaIntervalDays ?? 30;
+      if (intervalDays > 0) {
+        const rawToken = randomBytes(32).toString('hex');
+        const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+        const expiresAt = new Date(Date.now() + intervalDays * 24 * 60 * 60 * 1000);
+        await prisma.trustedDevice.create({ data: { userId, tokenHash, expiresAt } });
+        return { ...pair, deviceToken: rawToken };
+      }
     }
 
     return pair;

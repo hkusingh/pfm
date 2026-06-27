@@ -9,6 +9,7 @@ type Household = {
   name: string;
   baseCurrency: string;
   monthStartDay: number;
+  mfaIntervalDays: number;
 };
 
 type Member = {
@@ -81,6 +82,7 @@ export function HouseholdSettingsPage() {
   const [editName, setEditName] = useState('');
   const [editCurrency, setEditCurrency] = useState('');
   const [editMonthStart, setEditMonthStart] = useState(1);
+  const [editMfaInterval, setEditMfaInterval] = useState(30);
   const [editMode, setEditMode] = useState(false);
   const [settingsError, setSettingsError] = useState('');
 
@@ -93,7 +95,7 @@ export function HouseholdSettingsPage() {
   const isOwner = myMembership?.role === 'owner';
 
   const updateSettingsMut = useMutation({
-    mutationFn: (data: { name: string; baseCurrency: string; monthStartDay: number }) =>
+    mutationFn: (data: { name: string; baseCurrency: string; monthStartDay: number; mfaIntervalDays: number }) =>
       api.patch(`/households/${household!.id}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['household'] });
@@ -109,6 +111,7 @@ export function HouseholdSettingsPage() {
     setEditName(household?.name ?? '');
     setEditCurrency(household?.baseCurrency ?? 'USD');
     setEditMonthStart(household?.monthStartDay ?? 1);
+    setEditMfaInterval(household?.mfaIntervalDays ?? 30);
     setEditMode(true);
     setSettingsError('');
   }
@@ -198,6 +201,7 @@ export function HouseholdSettingsPage() {
                   name: editName,
                   baseCurrency: editCurrency,
                   monthStartDay: editMonthStart,
+                  mfaIntervalDays: editMfaInterval,
                 });
               }}
               className="grid grid-cols-1 sm:grid-cols-3 gap-4"
@@ -232,6 +236,20 @@ export function HouseholdSettingsPage() {
                   {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
                     <option key={d} value={d}>{d}</option>
                   ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">MFA re-verification</label>
+                <select
+                  value={editMfaInterval}
+                  onChange={(e) => setEditMfaInterval(Number(e.target.value))}
+                  className="block w-full h-[38px] rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value={0}>Every login</option>
+                  <option value={7}>Every 7 days</option>
+                  <option value={14}>Every 14 days</option>
+                  <option value={30}>Every 30 days</option>
+                  <option value={90}>Every 90 days</option>
                 </select>
               </div>
               {settingsError && (

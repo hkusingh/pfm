@@ -102,7 +102,9 @@ model Household {
   name          String
   baseCurrency  String   @default("USD")
   // Day of month when the budget period starts (1–28)
-  monthStartDay Int      @default(1)
+  monthStartDay    Int      @default(1)
+  // Days between MFA re-verification; 0 = require MFA on every login
+  mfaIntervalDays  Int      @default(30)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

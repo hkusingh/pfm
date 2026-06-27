@@ -45,10 +45,11 @@ export function AppShell() {
     { label: 'Budgets', href: '/budgets', active: pathname === '/budgets', icon: <PiggyBank size={18} /> },
     { label: 'Reports', href: '/reports', active: pathname === '/reports', icon: <BarChart3 size={18} /> },
     { label: 'Household', href: '/settings/household', active: pathname === '/settings/household', icon: <Users size={18} /> },
-    ...(me?.isSiteAdmin
-      ? [{ label: 'Admin', href: '/admin/invites', active: pathname.startsWith('/admin'), icon: <ShieldCheck size={18} /> }]
-      : []),
   ];
+
+  const bottomNavItems = me?.isSiteAdmin
+    ? [{ label: 'Admin', href: '/admin/invites', active: pathname.startsWith('/admin'), icon: <ShieldCheck size={18} /> }]
+    : [];
 
   const userInitial = me?.name
     ? me.name[0].toUpperCase()
@@ -71,6 +72,7 @@ export function AppShell() {
       logoSrc={APP_LOGO}
       logoMark={APP_MARK}
       navItems={navItems}
+      bottomNavItems={bottomNavItems}
       userEmail={isDemo ? 'Demo mode' : (me?.email ?? '')}
       userInitial={isDemo ? '👁' : userInitial}
       householdName={household?.name}

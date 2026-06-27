@@ -10,6 +10,7 @@ export interface NavItem {
 
 interface NavShellProps {
   navItems: NavItem[];
+  bottomNavItems?: NavItem[];
   userEmail?: string;
   userInitial?: string;
   appName?: string;
@@ -23,7 +24,7 @@ interface NavShellProps {
 }
 
 export function NavShell({
-  navItems, userEmail, userInitial, appName = 'Smart Munshi',
+  navItems, bottomNavItems, userEmail, userInitial, appName = 'Smart Munshi',
   logoSrc, householdName, memberCount, children, onSignOut, onNavigate,
 }: NavShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -46,6 +47,7 @@ export function NavShell({
         <div style={{ overflow: 'hidden', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: '#142d44' }}>
           <SidebarContent
             navItems={navItems}
+            bottomNavItems={bottomNavItems}
             userEmail={userEmail}
             userInitial={initial}
             appName={appName}
@@ -105,6 +107,7 @@ export function NavShell({
           <aside className="relative flex flex-col w-64 shadow-xl" style={{ background: '#142d44' }}>
             <SidebarContent
               navItems={navItems}
+              bottomNavItems={bottomNavItems}
               userEmail={userEmail}
               userInitial={initial}
               appName={appName}
@@ -146,6 +149,7 @@ export function NavShell({
 
 interface SidebarContentProps {
   navItems: NavItem[];
+  bottomNavItems?: NavItem[];
   userEmail?: string;
   userInitial: string;
   appName: string;
@@ -158,7 +162,7 @@ interface SidebarContentProps {
 }
 
 function SidebarContent({
-  navItems, userEmail, userInitial, appName, logoSrc,
+  navItems, bottomNavItems, userEmail, userInitial, appName, logoSrc,
   householdName, memberCount, onSignOut, onNavigate, collapsed,
 }: SidebarContentProps) {
   return (
@@ -238,6 +242,51 @@ function SidebarContent({
           </a>
         ))}
       </nav>
+
+      {/* Bottom nav items (e.g. Admin) — rendered above household footer */}
+      {bottomNavItems && bottomNavItems.length > 0 && (
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          {bottomNavItems.map((item) => (
+            <a
+              key={item.href}
+              href={item.href}
+              title={collapsed ? item.label : undefined}
+              onClick={onNavigate ? (e) => { e.preventDefault(); onNavigate(item.href); } : undefined}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: collapsed ? 'center' : 'flex-start',
+                gap: 10,
+                padding: collapsed ? '11px 0' : '10px 20px',
+                fontSize: 14,
+                textDecoration: 'none',
+                color: item.active ? '#fff' : '#cdd9e6',
+                borderLeft: `3px solid ${item.active ? '#2F855A' : 'transparent'}`,
+                background: item.active ? 'rgba(255,255,255,0.08)' : 'transparent',
+                transition: 'background 0.15s, color 0.15s',
+              }}
+              aria-current={item.active ? 'page' : undefined}
+              onMouseEnter={(e) => {
+                if (!item.active) {
+                  (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)';
+                  (e.currentTarget as HTMLElement).style.color = '#fff';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!item.active) {
+                  (e.currentTarget as HTMLElement).style.background = 'transparent';
+                  (e.currentTarget as HTMLElement).style.color = '#cdd9e6';
+                }
+              }}
+            >
+              <span style={{ width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {item.icon ?? <DefaultDot active={item.active} />}
+              </span>
+              {!collapsed && <span className="flex-1 whitespace-nowrap">{item.label}</span>}
+            </a>
+          ))}
+        </div>
+      )}
 
       {/* Household label + settings gear */}
       {(householdName != null || memberCount != null) && (

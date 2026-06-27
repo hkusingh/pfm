@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 
 function decodeJwtPayload(token: string): Record<string, unknown> {
   try {
@@ -18,6 +18,9 @@ interface AuthState {
 }
 
 const AuthContext = createContext<AuthState | null>(null);
+
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const IDLE_EVENTS = ['mousemove', 'keydown', 'pointerdown', 'scroll', 'touchstart'] as const;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(
@@ -47,6 +50,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('refreshToken');
     setAccessToken(null);
     setIsDemo(false);
+  }, []);
+
+  // Idle timeout — sign out after 30 min of inactivity (demo sessions excluded)
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const accessTokenRef = useRef(accessToken);
+  const isDemoRef = useRef(isDemo);
+  accessTokenRef.current = accessToken;
+  isDemoRef.current = isDemo;
+
+  useEffect(() => {
+    function resetTimer() {
+      if (!accessTokenRef.current || isDemoRef.current) return;
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+      idleTimer.current = setTimeout(() => {
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+        setAccessToken(null);
+        setIsDemo(false);
+        window.location.href = '/';
+      }, IDLE_TIMEOUT_MS);
+    }
+
+    resetTimer();
+    IDLE_EVENTS.forEach((e) => window.addEventListener(e, resetTimer, { passive: true }));
+    return () => {
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+      IDLE_EVENTS.forEach((e) => window.removeEventListener(e, resetTimer));
+    };
   }, []);
 
   return (
