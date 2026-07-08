@@ -70,7 +70,10 @@ export class MfaService {
     return { secret, otpauthUrl, qrDataUrl };
   }
 
-  async confirmTotpSetup(userId: string, code: string): Promise<{ recoveryCodes: string[] }> {
+  async confirmTotpSetup(
+    userId: string,
+    code: string,
+  ): Promise<{ recoveryCodes: string[]; accessToken: string; refreshToken: string; expiresIn: number }> {
     const pending = await prisma.mfaMethod.findUnique({
       where: { id: `${userId}_totp_pending` },
     });
@@ -94,7 +97,13 @@ export class MfaService {
       });
     });
 
-    return { recoveryCodes };
+    // Issue a fully-verified token pair immediately so the user doesn't have to
+    // log in again after setup — they're already authenticated and just proved
+    // possession of the TOTP secret.
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const tokenPair = await this.tokens.issueTokenPair(user.id, user.email, true);
+
+    return { recoveryCodes, ...tokenPair };
   }
 
   // ─── Email MFA setup ────────────────────────────────────────────────────────

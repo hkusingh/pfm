@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, Button, FormField } from '@pfm/ui';
 import { api, ApiException } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { AuthLayout } from '../components/AuthLayout';
 
 type TotpSetup = { secret: string; otpauthUrl: string; qrDataUrl: string };
@@ -9,6 +10,7 @@ type TotpSetup = { secret: string; otpauthUrl: string; qrDataUrl: string };
 export function MfaSetupPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { setTokens } = useAuth();
   const householdInvite = (location.state as { householdInvite?: string } | null)?.householdInvite;
   const [totp, setTotp] = useState<TotpSetup | null>(null);
   const [code, setCode] = useState('');
@@ -25,7 +27,13 @@ export function MfaSetupPage() {
     setError('');
     setLoading(true);
     try {
-      const res = await api.post<{ recoveryCodes: string[] }>('/mfa/totp/confirm', { code });
+      const res = await api.post<{
+        recoveryCodes: string[];
+        accessToken: string;
+        refreshToken: string;
+      }>('/mfa/totp/confirm', { code });
+      // Store the fully-verified tokens immediately — no second login needed.
+      setTokens(res.accessToken, res.refreshToken);
       setRecoveryCodes(res.recoveryCodes);
     } catch (err) {
       setError(err instanceof ApiException ? err.message : 'Confirmation failed.');
@@ -46,7 +54,7 @@ export function MfaSetupPage() {
             <div className="bg-gray-100 rounded-lg p-4 font-mono text-sm space-y-1">
               {recoveryCodes.map((c) => <div key={c}>{c}</div>)}
             </div>
-            <Button className="w-full" onClick={() => navigate(householdInvite ? `/login?householdInvite=${householdInvite}` : '/login')}>Done — sign in</Button>
+            <Button className="w-full" onClick={() => navigate(householdInvite ? `/invites/${householdInvite}` : '/dashboard', { replace: true })}>Continue</Button>
           </div>
         </Card>
       </AuthLayout>
