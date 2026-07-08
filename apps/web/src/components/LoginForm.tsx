@@ -5,10 +5,11 @@ import { api, ApiException } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
 interface LoginFormProps {
-  onSuccess?: () => void;  // called after successful login (e.g. close modal)
+  onSuccess?: () => void;
+  householdInvite?: string;
 }
 
-export function LoginForm({ onSuccess }: LoginFormProps) {
+export function LoginForm({ onSuccess, householdInvite }: LoginFormProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -35,14 +36,14 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
       >('/auth/login', { email, password, deviceToken });
 
       if (res.status === 'mfa_required') {
-        navigate('/mfa/verify', { state: { mfaChallengeToken: res.mfaChallengeToken } });
+        navigate('/mfa/verify', { state: { mfaChallengeToken: res.mfaChallengeToken, householdInvite } });
       } else if (res.mfaVerified) {
         setTokens(res.accessToken, res.refreshToken);
         onSuccess?.();
-        navigate('/dashboard');
+        navigate(householdInvite ? `/invites/${householdInvite}` : '/dashboard');
       } else {
         setTokens(res.accessToken, res.refreshToken);
-        navigate('/mfa/setup');
+        navigate('/mfa/setup', { state: { householdInvite } });
       }
     } catch (err) {
       setError(err instanceof ApiException ? err.message : 'Login failed. Please try again.');

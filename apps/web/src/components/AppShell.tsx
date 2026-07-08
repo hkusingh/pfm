@@ -1,4 +1,4 @@
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { LayoutDashboard, ArrowLeftRight, Wallet, Tag, PiggyBank, BarChart3, Users, ShieldCheck } from 'lucide-react';
 import { NavShell } from '@pfm/ui';
@@ -18,7 +18,7 @@ export function AppShell() {
   const { pathname } = useLocation();
 
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: () => api.get<Me>('/auth/me') });
-  const { data: household } = useQuery({
+  const { data: household, isError: householdMissing, isFetched: householdFetched } = useQuery({
     queryKey: ['household'],
     queryFn: () => api.get<Household>('/households/me'),
     retry: false,
@@ -56,6 +56,13 @@ export function AppShell() {
     : me?.email
     ? me.email[0].toUpperCase()
     : undefined;
+
+  // If the household query has settled and there's no household, the user needs to create one.
+  // Invited members are redirected to /invites/:token before reaching here, so this only
+  // fires for a new owner who somehow bypassed /onboarding/household.
+  if (householdFetched && householdMissing && !pathname.startsWith('/onboarding')) {
+    return <Navigate to="/onboarding/household" replace />;
+  }
 
   async function handleSignOut() {
     const refreshToken = localStorage.getItem('refreshToken');
